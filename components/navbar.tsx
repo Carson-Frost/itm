@@ -1,0 +1,104 @@
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+
+import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+  navigationMenuTriggerStyle,
+} from "@/components/ui/navigation-menu"
+
+export function Navbar() {
+  const isMobile = useIsMobile()
+
+  return (
+    <nav className="border-b">
+      <div className="flex h-16 items-center px-4 container mx-auto">
+        <Link href="/" className="mr-6 flex items-center space-x-2">
+          <span className="font-bold text-xl">ITM Scouting</span>
+        </Link>
+        <NavigationMenu viewport={isMobile}>
+          <NavigationMenuList className="flex-wrap">
+        <NavigationMenuItem>
+          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+            <Link href="/connections">Connections</Link>
+          </NavigationMenuLink>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
+          <NavigationMenuTrigger>Fantasy</NavigationMenuTrigger>
+          <NavigationMenuContent>
+            <ul className="grid gap-2 sm:w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+              <ListItem href="/fantasy/rankings/redraft" title="Redraft Rankings">
+                View and analyze redraft fantasy football rankings.
+              </ListItem>
+              <ListItem href="/fantasy/rankings/dynasty" title="Dynasty Rankings">
+                Long-term dynasty league player rankings and valuations.
+              </ListItem>
+              <ListItem href="/fantasy/rankings/prospects" title="Prospects Rankings">
+                Rookie and college prospect rankings for dynasty leagues.
+              </ListItem>
+              <ListItem href="/fantasy/trade-calculator" title="Trade Calculator">
+                Evaluate fantasy football trades with our trade calculator.
+              </ListItem>
+              <ListItem href="/fantasy/charts" title="Charts">
+                Visual charts and analytics for fantasy football data.
+              </ListItem>
+            </ul>
+          </NavigationMenuContent>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
+          <NavigationMenuTrigger>NFL</NavigationMenuTrigger>
+          <NavigationMenuContent>
+            <ul className="grid gap-2 sm:w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+              <ListItem href="/nfl/rankings" title="Player Rankings">
+                NFL player rankings and performance evaluations.
+              </ListItem>
+              <ListItem href="/nfl/rankings/draft-classes" title="Draft Classes">
+                Historical and current NFL draft class analysis.
+              </ListItem>
+              <ListItem href="/nfl/rankings/teams" title="Team Rankings">
+                NFL team rankings and organizational evaluations.
+              </ListItem>
+              <ListItem href="/nfl/stats" title="Stats">
+                Comprehensive NFL player and team statistics.
+              </ListItem>
+              <ListItem href="/nfl/itm-model" title="ITM Model">
+                Advanced analytics and projections from the ITM Model.
+              </ListItem>
+            </ul>
+          </NavigationMenuContent>
+        </NavigationMenuItem>
+      </NavigationMenuList>
+    </NavigationMenu>
+      </div>
+    </nav>
+  )
+}
+
+function ListItem({
+  title,
+  children,
+  href,
+  ...props
+}: React.ComponentPropsWithoutRef<"li"> & { href: string; title: string }) {
+  return (
+    <li {...props}>
+      <NavigationMenuLink asChild>
+        <Link href={href}>
+          <div className="text-sm leading-none font-medium">{title}</div>
+          <p className="text-muted-foreground line-clamp-2 text-sm leading-snug">
+            {children}
+          </p>
+        </Link>
+      </NavigationMenuLink>
+    </li>
+  )
+}

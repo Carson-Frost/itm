@@ -1,0 +1,10 @@
+PROJECT BACKLOG:
+
+project setup - done
+navbar - done
+authentication - 
+dark mode / theming -
+player data - 
+fantasy charts page - 
+player stats page -
+rankings - 
