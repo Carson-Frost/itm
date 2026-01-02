@@ -2,7 +2,7 @@ PROJECT BACKLOG:
 
 project setup - done
 navbar - done
-authentication - 
+authentication - done
 dark mode / theming -
 player data - 
 fantasy charts page - 

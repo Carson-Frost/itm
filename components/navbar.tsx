@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { UserMenu } from "@/components/user-menu"
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -18,13 +19,13 @@ export function Navbar() {
   const isMobile = useIsMobile()
 
   return (
-    <nav className="border-b">
-      <div className="flex h-16 items-center px-4 container mx-auto">
-        <Link href="/" className="mr-6 flex items-center space-x-2">
-          <span className="font-bold text-xl">ITM Scouting</span>
+    <nav className="border-b sticky top-0 z-50 bg-background">
+      <div className="flex h-14 items-center px-4 sm:px-6 max-w-[1400px] mx-auto">
+        <Link href="/" className="mr-2 sm:mr-6 flex items-center space-x-2">
+          <span className="font-bold text-lg sm:text-xl">ITM Scouting</span>
         </Link>
-        <NavigationMenu viewport={isMobile}>
-          <NavigationMenuList className="flex-wrap">
+        <NavigationMenu viewport={isMobile} className="mt-1 hidden sm:flex">
+          <NavigationMenuList>
         <NavigationMenuItem>
           <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
             <Link href="/connections">Connections</Link>
@@ -32,32 +33,40 @@ export function Navbar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuTrigger>Fantasy</NavigationMenuTrigger>
+          <NavigationMenuTrigger onClick={(e) => {
+            if (e.currentTarget.getAttribute('data-state') === 'open') {
+              e.preventDefault()
+            }
+          }}>Fantasy</NavigationMenuTrigger>
           <NavigationMenuContent>
-            <ul className="grid gap-2 sm:w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+            <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
               <ListItem href="/fantasy/rankings/redraft" title="Redraft Rankings">
                 View and analyze redraft fantasy football rankings.
               </ListItem>
               <ListItem href="/fantasy/rankings/dynasty" title="Dynasty Rankings">
                 Long-term dynasty league player rankings and valuations.
               </ListItem>
-              <ListItem href="/fantasy/rankings/prospects" title="Prospects Rankings">
+              <ListItem href="/fantasy/rankings/prospects" title="Prospect Rankings">
                 Rookie and college prospect rankings for dynasty leagues.
               </ListItem>
               <ListItem href="/fantasy/trade-calculator" title="Trade Calculator">
                 Evaluate fantasy football trades with our trade calculator.
               </ListItem>
-              <ListItem href="/fantasy/charts" title="Charts">
-                Visual charts and analytics for fantasy football data.
+              <ListItem href="/fantasy/charts" title="Fantasy Charts">
+                See the top performing fantasy football players.
               </ListItem>
             </ul>
           </NavigationMenuContent>
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuTrigger>NFL</NavigationMenuTrigger>
+          <NavigationMenuTrigger onClick={(e) => {
+            if (e.currentTarget.getAttribute('data-state') === 'open') {
+              e.preventDefault()
+            }
+          }}>NFL</NavigationMenuTrigger>
           <NavigationMenuContent>
-            <ul className="grid gap-2 sm:w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+            <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
               <ListItem href="/nfl/rankings" title="Player Rankings">
                 NFL player rankings and performance evaluations.
               </ListItem>
@@ -78,6 +87,11 @@ export function Navbar() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
+        <NavigationMenu viewport={isMobile} className="ml-auto mt-1 -mr-1 sm:-mr-2">
+          <NavigationMenuList>
+            <UserMenu />
+          </NavigationMenuList>
+        </NavigationMenu>
       </div>
     </nav>
   )

@@ -37,6 +37,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--success);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -122,4 +123,22 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Cursor styles - outside @layer to have higher specificity */
+button,
+a,
+[role="button"],
+[type="button"],
+[type="submit"],
+[type="reset"],
+label[for],
+select,
+[data-state] {
+  cursor: pointer !important;
+}
+
+/* Success color - static, does not change with theme */
+:root {
+  --success: #00a700;
 }
