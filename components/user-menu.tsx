@@ -1,12 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Moon, Settings, LogOut } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useTheme } from "@/lib/theme-context"
 import { useUserData } from "@/hooks/use-user-data"
 import { signOut } from "@/lib/auth-actions"
-import { AuthDialog } from "@/components/auth-dialog"
+import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/user-avatar"
 import {
   NavigationMenuItem,
@@ -15,39 +16,43 @@ import {
   NavigationMenuLink,
 } from "@/components/ui/navigation-menu"
 import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
 
 export function UserMenu() {
   const { user, loading } = useAuth()
   const { userData } = useUserData(user?.uid)
   const { theme, toggleTheme } = useTheme()
+  const pathname = usePathname()
 
   if (loading) {
     return null
   }
 
   if (!user) {
-    return <AuthDialog />
+    return (
+      <Button size="sm" asChild>
+        <Link href={`/login?returnTo=${encodeURIComponent(pathname)}`}>Log In</Link>
+      </Button>
+    )
   }
 
   return (
     <NavigationMenuItem>
       <NavigationMenuTrigger
-        className="[&>svg]:hidden h-11 pl-4 pr-2"
+        className="[&>svg]:hidden h-11 pl-4 pr-2 group"
         onClick={(e) => {
           if (e.currentTarget.getAttribute('data-state') === 'open') {
             e.preventDefault()
           }
         }}
       >
-        <span className="mr-3 text-base">{userData?.username || user.displayName || user.email}</span>
+        <span className="mr-3 text-base">@<span className="group-hover:underline">{userData?.username || user.displayName || user.email}</span></span>
         <UserAvatar
           username={userData?.username}
           avatarConfig={userData?.avatarConfig}
           className="h-8 w-8"
         />
       </NavigationMenuTrigger>
-      <NavigationMenuContent className="left-auto right-0">
+      <NavigationMenuContent className="left-auto right-0 !mt-1.5">
         <ul className="grid w-[250px] px-2 pt-2 pb-1">
           <li className="flex items-center gap-2 pb-3 border-b mb-2">
             <UserAvatar

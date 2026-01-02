@@ -24,7 +24,7 @@ export function Navbar() {
         <Link href="/" className="mr-2 sm:mr-6 flex items-center space-x-2">
           <span className="font-bold text-lg sm:text-xl">ITM Scouting</span>
         </Link>
-        <NavigationMenu viewport={isMobile} className="mt-1 hidden sm:flex">
+        <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>
         <NavigationMenuItem>
           <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
@@ -87,7 +87,7 @@ export function Navbar() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
-        <NavigationMenu viewport={isMobile} className="ml-auto mt-1 -mr-1 sm:-mr-2">
+        <NavigationMenu viewport={isMobile} className="ml-auto -mr-1 sm:-mr-2">
           <NavigationMenuList>
             <UserMenu />
           </NavigationMenuList>
