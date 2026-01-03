@@ -37,7 +37,6 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-success: var(--success);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -138,7 +137,10 @@ select,
   cursor: pointer !important;
 }
 
-/* Success color - static, does not change with theme */
 :root {
   --success: #00a700;
+  --position-qb: #ab5477;
+  --position-rb: #66af95;
+  --position-wr: #3d91b5;
+  --position-te: #b67d42;
 }

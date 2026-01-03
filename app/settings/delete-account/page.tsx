@@ -95,7 +95,7 @@ export default function DeleteAccount() {
           </Breadcrumb>
           <Separator className="mb-5" />
 
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b">Delete Account</h2>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Delete Account</h1>
 
           <div className="max-w-xl space-y-6">
             <div className="flex gap-3 p-4 rounded-md bg-destructive/10 border border-destructive/20">

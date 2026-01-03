@@ -143,7 +143,7 @@ export default function EditProfile() {
           </Breadcrumb>
           <Separator className="mb-5" />
 
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b">Profile</h2>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Edit Profile</h1>
 
           <div className="flex items-start gap-6">
             <div className="flex flex-col items-center gap-2">

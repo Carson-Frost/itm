@@ -83,7 +83,7 @@ export default function SignOutEverywhere() {
           </Breadcrumb>
           <Separator className="mb-5" />
 
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b">Sign Out Everywhere</h2>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Sign Out Everywhere</h1>
 
           <div className="max-w-xl space-y-6">
             <div className="space-y-3">
