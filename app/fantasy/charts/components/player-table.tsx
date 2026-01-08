@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Player, Position } from "@/lib/mock-fantasy-data"
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { ChevronUp, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type SortField = 'rank' | 'fantasyPoints' | 'pointsPerGame'
+type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries' | 'rushingYards' | 'rushingTDs' | 'targets' | 'receptions' | 'receivingYards' | 'receivingTDs' | 'attempts' | 'completions' | 'passingYards' | 'passingTDs'
 type SortDirection = 'asc' | 'desc'
 
 interface PlayerTableProps {
@@ -38,6 +38,7 @@ function getPositionColor(position: Position): string {
 function SortableHeader({
   field,
   label,
+  fullName,
   currentField,
   direction,
   onSort,
@@ -45,6 +46,7 @@ function SortableHeader({
 }: {
   field: SortField
   label: string
+  fullName?: string
   currentField: SortField
   direction: SortDirection
   onSort: (field: SortField) => void
@@ -53,45 +55,48 @@ function SortableHeader({
   const isActive = currentField === field
 
   return (
-    <TableHead className={cn("text-center", className)}>
+    <TableHead className={cn(className)}>
       <button
         onClick={() => onSort(field)}
-        className="flex items-center justify-center gap-1 hover:text-foreground transition-colors font-medium w-full"
+        className="hover:text-foreground transition-colors font-medium w-full text-center"
+        title={fullName}
       >
-        {label}
-        {isActive ? (
-          direction === 'asc' ? (
-            <ArrowUp className="h-4 w-4" />
-          ) : (
-            <ArrowDown className="h-4 w-4" />
-          )
-        ) : (
-          <ArrowUpDown className="h-4 w-4 opacity-40" />
-        )}
+        <span className="relative inline-block">
+          {label}
+          {isActive && (
+            <sup className="absolute left-full ml-0.5 top-0">
+              {direction === 'asc' ? (
+                <ChevronUp className="h-2.5 w-2.5" />
+              ) : (
+                <ChevronDown className="h-2.5 w-2.5" />
+              )}
+            </sup>
+          )}
+        </span>
       </button>
     </TableHead>
   )
 }
 
 // Stat columns grouped by category
-const rushingColumns = [
-  { key: 'carries', label: 'CAR' },
-  { key: 'rushingYards', label: 'YDS' },
-  { key: 'rushingTDs', label: 'TD' },
+const rushingColumns: { key: SortField, label: string, fullName: string }[] = [
+  { key: 'carries', label: 'ATT', fullName: 'Rushing Attempts' },
+  { key: 'rushingYards', label: 'YD', fullName: 'Rushing Yards' },
+  { key: 'rushingTDs', label: 'TD', fullName: 'Rushing Touchdowns' },
 ]
 
-const receivingColumns = [
-  { key: 'targets', label: 'TAR' },
-  { key: 'receptions', label: 'REC' },
-  { key: 'receivingYards', label: 'YDS' },
-  { key: 'receivingTDs', label: 'TD' },
+const receivingColumns: { key: SortField, label: string, fullName: string }[] = [
+  { key: 'targets', label: 'TAR', fullName: 'Targets' },
+  { key: 'receptions', label: 'REC', fullName: 'Receptions' },
+  { key: 'receivingYards', label: 'YD', fullName: 'Receiving Yards' },
+  { key: 'receivingTDs', label: 'TD', fullName: 'Receiving Touchdowns' },
 ]
 
-const passingColumns = [
-  { key: 'attempts', label: 'ATT' },
-  { key: 'completions', label: 'CMP' },
-  { key: 'passingYards', label: 'YDS' },
-  { key: 'passingTDs', label: 'TD' },
+const passingColumns: { key: SortField, label: string, fullName: string }[] = [
+  { key: 'attempts', label: 'ATT', fullName: 'Passing Attempts' },
+  { key: 'completions', label: 'CMP', fullName: 'Completions' },
+  { key: 'passingYards', label: 'YD', fullName: 'Passing Yards' },
+  { key: 'passingTDs', label: 'TD', fullName: 'Passing Touchdowns' },
 ]
 
 export function PlayerTable({
@@ -102,100 +107,127 @@ export function PlayerTable({
   onSort,
   onPlayerClick,
 }: PlayerTableProps) {
+  // Determine column group order based on selected position
+  const getColumnGroupOrder = () => {
+    switch (selectedPosition) {
+      case 'QB':
+        return [
+          { key: 'passing', label: 'PASSING', columns: passingColumns },
+          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
+          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
+        ]
+      case 'RB':
+        return [
+          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
+          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
+          { key: 'passing', label: 'PASSING', columns: passingColumns },
+        ]
+      case 'WR':
+      case 'TE':
+        return [
+          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
+          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
+          { key: 'passing', label: 'PASSING', columns: passingColumns },
+        ]
+      case 'ALL':
+      default:
+        return [
+          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
+          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
+          { key: 'passing', label: 'PASSING', columns: passingColumns },
+        ]
+    }
+  }
+
+  const columnGroups = getColumnGroupOrder()
+
   return (
     <div className="border rounded-md">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="h-8"></TableHead>
-            <TableHead className="h-8"></TableHead>
-            <TableHead className="h-8"></TableHead>
-            <TableHead className="h-8"></TableHead>
-            <TableHead colSpan={rushingColumns.length} className="text-center h-8 text-xs font-semibold">
-              RUSHING
+            <TableHead className="text-center w-12"></TableHead>
+            <TableHead colSpan={3} className="text-center text-xs font-semibold">
+              PLAYER
             </TableHead>
-            <TableHead colSpan={receivingColumns.length} className="text-center h-8 text-xs font-semibold">
-              RECEIVING
+            <TableHead className="text-center w-12"></TableHead>
+            <TableHead colSpan={2} className="text-center text-xs font-semibold">
+              FANTASY
             </TableHead>
-            <TableHead colSpan={passingColumns.length} className="text-center h-8 text-xs font-semibold">
-              PASSING
-            </TableHead>
+            {columnGroups.map((group, index) => (
+              <TableHead
+                key={group.key}
+                colSpan={group.columns.length}
+                className="text-center text-xs font-semibold hidden md:table-cell"
+              >
+                {group.label}
+              </TableHead>
+            ))}
           </TableRow>
           <TableRow>
-            <TableHead className="text-center w-12">
-              <button
-                onClick={() => onSort('rank')}
-                className="flex items-center justify-center gap-1 hover:text-foreground transition-colors font-medium w-full"
-              >
-                RK
-                {sortField === 'rank' ? (
-                  sortDirection === 'asc' ? (
-                    <ArrowUp className="h-4 w-4" />
-                  ) : (
-                    <ArrowDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4 opacity-40" />
-                )}
-              </button>
-            </TableHead>
-            <TableHead className="text-left">PLAYER</TableHead>
-            <TableHead className="text-center w-16">
-              <button
-                onClick={() => onSort('fantasyPoints')}
-                className="flex items-center justify-center gap-1 hover:text-foreground transition-colors font-medium w-full"
-              >
-                PTS
-                {sortField === 'fantasyPoints' ? (
-                  sortDirection === 'asc' ? (
-                    <ArrowUp className="h-4 w-4" />
-                  ) : (
-                    <ArrowDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4 opacity-40" />
-                )}
-              </button>
-            </TableHead>
-            <TableHead className="text-center w-16">
-              <button
-                onClick={() => onSort('pointsPerGame')}
-                className="flex items-center justify-center gap-1 hover:text-foreground transition-colors font-medium w-full"
-              >
-                AVG
-                {sortField === 'pointsPerGame' ? (
-                  sortDirection === 'asc' ? (
-                    <ArrowUp className="h-4 w-4" />
-                  ) : (
-                    <ArrowDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4 opacity-40" />
-                )}
-              </button>
-            </TableHead>
-            {rushingColumns.map((col) => (
-              <TableHead key={col.key} className="text-center">
-                {col.label}
-              </TableHead>
-            ))}
-            {receivingColumns.map((col) => (
-              <TableHead key={col.key} className="text-center">
-                {col.label}
-              </TableHead>
-            ))}
-            {passingColumns.map((col) => (
-              <TableHead key={col.key} className="text-center">
-                {col.label}
-              </TableHead>
-            ))}
+            <SortableHeader
+              field="rank"
+              label="RK"
+              fullName="Rank"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={onSort}
+              className="w-12"
+            />
+            <SortableHeader
+              field="name"
+              label="NAME"
+              fullName="Player Name"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={onSort}
+              className="text-left w-48"
+            />
+            <TableHead className="text-center w-16 font-medium" title="Position">POS</TableHead>
+            <TableHead className="text-center w-16 font-medium" title="Team">TEAM</TableHead>
+            <TableHead className="text-center w-12 font-medium" title="Games Played">G</TableHead>
+            <SortableHeader
+              field="fantasyPoints"
+              label="PTS"
+              fullName="Fantasy Points"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={onSort}
+              className="w-16"
+            />
+            <SortableHeader
+              field="pointsPerGame"
+              label="AVG"
+              fullName="Points Per Game"
+              currentField={sortField}
+              direction={sortDirection}
+              onSort={onSort}
+              className="w-16"
+            />
+            {columnGroups.map((group, groupIndex) =>
+              group.columns.map((col, colIndex) => (
+                <SortableHeader
+                  key={col.key}
+                  field={col.key}
+                  label={col.label}
+                  fullName={col.fullName}
+                  currentField={sortField}
+                  direction={sortDirection}
+                  onSort={onSort}
+                  className={cn(
+                    "hidden md:table-cell",
+                    colIndex === 0 && "pl-4"
+                  )}
+                />
+              ))
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
           {players.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={4 + rushingColumns.length + receivingColumns.length + passingColumns.length}
+                colSpan={7 + rushingColumns.length + receivingColumns.length + passingColumns.length}
                 className="text-center py-8 text-muted-foreground"
               >
                 No players found
@@ -222,53 +254,48 @@ export function PlayerTable({
                     ) : (
                       <div className="h-8 w-8 rounded-full bg-muted" />
                     )}
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{player.name}</span>
-                      <Badge
-                        className={cn(
-                          getPositionColor(player.position),
-                          "text-white font-semibold text-[10px] h-4 px-1.5"
-                        )}
-                      >
-                        {player.position}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">{player.team}</span>
-                    </div>
+                    <span className="font-medium">{player.name}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-center font-semibold">
+                <TableCell className="text-center">
+                  <Badge
+                    className={cn(
+                      getPositionColor(player.position),
+                      "text-white font-semibold text-[10px] h-4 px-1.5"
+                    )}
+                  >
+                    {player.position}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className="text-xs text-muted-foreground">{player.team}</span>
+                </TableCell>
+                <TableCell className="text-center text-xs">
+                  {player.gamesPlayed}
+                </TableCell>
+                <TableCell className="text-center">
                   {player.fantasyPoints.toFixed(1)}
                 </TableCell>
                 <TableCell className="text-center">
                   {player.pointsPerGame.toFixed(1)}
                 </TableCell>
-                {rushingColumns.map((col) => {
-                  const value = player[col.key as keyof Player]
-                  const formattedValue = typeof value === 'number' ? Math.round(value) : '-'
-                  return (
-                    <TableCell key={col.key} className="text-center text-sm">
-                      {formattedValue}
-                    </TableCell>
-                  )
-                })}
-                {receivingColumns.map((col) => {
-                  const value = player[col.key as keyof Player]
-                  const formattedValue = typeof value === 'number' ? Math.round(value) : '-'
-                  return (
-                    <TableCell key={col.key} className="text-center text-sm">
-                      {formattedValue}
-                    </TableCell>
-                  )
-                })}
-                {passingColumns.map((col) => {
-                  const value = player[col.key as keyof Player]
-                  const formattedValue = typeof value === 'number' ? Math.round(value) : '-'
-                  return (
-                    <TableCell key={col.key} className="text-center text-sm">
-                      {formattedValue}
-                    </TableCell>
-                  )
-                })}
+                {columnGroups.map((group, groupIndex) =>
+                  group.columns.map((col, colIndex) => {
+                    const value = player[col.key as keyof Player]
+                    const formattedValue = typeof value === 'number' ? Math.round(value) : '-'
+                    return (
+                      <TableCell
+                        key={col.key}
+                        className={cn(
+                          "text-center text-sm hidden md:table-cell",
+                          colIndex === 0 && "pl-4"
+                        )}
+                      >
+                        {formattedValue}
+                      </TableCell>
+                    )
+                  })
+                )}
               </TableRow>
             ))
           )}

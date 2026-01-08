@@ -14,13 +14,15 @@ export function mapSeasonStatsToPlayer(
 
   const player: Player = {
     id: stats._id,
+    playerId: stats.player_id,
     rank,
     name: stats.player_display_name,
     position,
     team: stats.recent_team,
     gamesPlayed: stats.games,
     headshotUrl: stats.headshot_url,
-    fantasyPoints: stats.fantasy_points_ppr, // Using PPR scoring
+    fantasyPoints: stats.fantasy_points, // STD scoring
+    fantasyPointsPPR: stats.fantasy_points_ppr, // PPR scoring
     pointsPerGame: stats.games > 0 ? stats.fantasy_points_ppr / stats.games : 0,
   }
 

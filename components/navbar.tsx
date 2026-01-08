@@ -22,7 +22,7 @@ export function Navbar() {
     <nav className="border-b sticky top-0 z-50 bg-background">
       <div className="flex h-14 items-center px-4 sm:px-6 max-w-[1400px] mx-auto">
         <Link href="/" className="mr-2 sm:mr-6 flex items-center space-x-2">
-          <span className="font-bold text-lg sm:text-xl">ITM Scouting</span>
+          <span className="font-bold text-lg sm:text-xl">ITM</span>
         </Link>
         <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>

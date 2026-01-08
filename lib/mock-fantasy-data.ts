@@ -2,6 +2,7 @@ export type Position = 'QB' | 'RB' | 'WR' | 'TE'
 
 export interface Player {
   id: string
+  playerId: string // Consistent player ID across seasons
   rank: number
   name: string
   position: Position
@@ -28,7 +29,8 @@ export interface Player {
   receivingTDs?: number
 
   // Calculated
-  fantasyPoints: number
+  fantasyPoints: number // STD scoring
+  fantasyPointsPPR: number // PPR scoring
   pointsPerGame: number
 }
 

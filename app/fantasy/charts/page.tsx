@@ -6,11 +6,13 @@ import { Filters } from "./components/filters"
 import { PlayerTable } from "./components/player-table"
 import { Pagination } from "./components/pagination"
 import { TableSkeleton } from "./components/table-skeleton"
+import { PlayerCard } from "./components/player-card"
 import { Position, Player } from "@/lib/mock-fantasy-data"
 import { SeasonStatsResponse } from "@/app/api/fantasy/season-stats/route"
 
-type SortField = 'rank' | 'fantasyPoints' | 'pointsPerGame'
+type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries' | 'rushingYards' | 'rushingTDs' | 'targets' | 'receptions' | 'receivingYards' | 'receivingTDs' | 'attempts' | 'completions' | 'passingYards' | 'passingTDs'
 type SortDirection = 'asc' | 'desc'
+type ScoringFormat = 'PPR' | 'Half PPR' | 'STD'
 
 const ITEMS_PER_PAGE = 15
 
@@ -19,12 +21,16 @@ export default function Charts() {
   const [error, setError] = useState<string | null>(null)
   const [allPlayers, setAllPlayers] = useState<Player[]>([])
   const [availableSeasons, setAvailableSeasons] = useState<{ year: number; label: string }[]>([])
+  const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [selectedPosition, setSelectedPosition] = useState<Position | 'ALL'>('ALL')
+  const [selectedTeam, setSelectedTeam] = useState<string>('ALL')
+  const [selectedScoringFormat, setSelectedScoringFormat] = useState<ScoringFormat>('PPR')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('rank')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
 
   // Fetch data from API
   useEffect(() => {
@@ -50,6 +56,10 @@ export default function Charts() {
         const data: SeasonStatsResponse = await response.json()
 
         setAllPlayers(data.players)
+
+        // Extract unique teams
+        const teams = Array.from(new Set(data.players.map(p => p.team))).sort()
+        setAvailableTeams(teams)
       } catch (err) {
         console.error('Error fetching season stats:', err)
         setError(err instanceof Error ? err.message : 'Failed to load data')
@@ -89,20 +99,47 @@ export default function Charts() {
 
   // Filter and sort players
   const filteredAndSortedPlayers = useMemo(() => {
-    let filtered = allPlayers
+    // Apply scoring format
+    let filtered = allPlayers.map(player => {
+      if (selectedScoringFormat === 'STD') {
+        // Use STD points from database
+        return {
+          ...player,
+          fantasyPoints: player.fantasyPoints,
+          pointsPerGame: player.gamesPlayed > 0 ? player.fantasyPoints / player.gamesPlayed : 0
+        }
+      } else if (selectedScoringFormat === 'Half PPR') {
+        // Half PPR = STD + 0.5 * receptions
+        const halfPPRPoints = player.fantasyPoints + ((player.receptions || 0) * 0.5)
+        return {
+          ...player,
+          fantasyPoints: halfPPRPoints,
+          pointsPerGame: player.gamesPlayed > 0 ? halfPPRPoints / player.gamesPlayed : 0
+        }
+      }
+      // PPR - use PPR points from database
+      return {
+        ...player,
+        fantasyPoints: player.fantasyPointsPPR,
+        pointsPerGame: player.gamesPlayed > 0 ? player.fantasyPointsPPR / player.gamesPlayed : 0
+      }
+    })
 
     // Filter by position
     if (selectedPosition !== 'ALL') {
       filtered = filtered.filter((p) => p.position === selectedPosition)
     }
 
+    // Filter by team
+    if (selectedTeam !== 'ALL') {
+      filtered = filtered.filter((p) => p.team === selectedTeam)
+    }
+
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.team.toLowerCase().includes(query)
+        (p) => p.name?.toLowerCase().includes(query)
       )
     }
 
@@ -115,11 +152,17 @@ export default function Charts() {
         return sortDirection === 'asc' ? aValue - bValue : bValue - aValue
       }
 
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
+      }
+
       return 0
     })
 
     return sorted
-  }, [allPlayers, selectedPosition, searchQuery, sortField, sortDirection])
+  }, [allPlayers, selectedPosition, selectedTeam, selectedScoringFormat, searchQuery, sortField, sortDirection])
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedPlayers.length / ITEMS_PER_PAGE)
@@ -139,7 +182,8 @@ export default function Charts() {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     } else {
       setSortField(field)
-      setSortDirection('asc')
+      // Default to asc for rank and name, desc for all other fields
+      setSortDirection(field === 'rank' || field === 'name' ? 'asc' : 'desc')
     }
     setCurrentPage(1)
   }
@@ -147,6 +191,16 @@ export default function Charts() {
   // Handle filter changes
   const handlePositionChange = (position: Position | 'ALL') => {
     setSelectedPosition(position)
+    setCurrentPage(1)
+  }
+
+  const handleTeamChange = (team: string) => {
+    setSelectedTeam(team)
+    setCurrentPage(1)
+  }
+
+  const handleScoringFormatChange = (format: ScoringFormat) => {
+    setSelectedScoringFormat(format)
     setCurrentPage(1)
   }
 
@@ -160,9 +214,8 @@ export default function Charts() {
     setCurrentPage(1)
   }
 
-  // Placeholder for player detail view
   const handlePlayerClick = (player: Player) => {
-    // TODO: Implement player detail view
+    setSelectedPlayer(player)
   }
 
   return (
@@ -170,12 +223,17 @@ export default function Charts() {
       <Navbar />
       <main className="flex-1 relative z-0">
         <div className="w-full max-w-[1400px] mx-auto pt-4 pb-4 sm:pb-8 px-3 sm:px-6 lg:px-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Fantasy Charts</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-0 underline">Fantasy Charts</h1>
 
           <div className="space-y-4">
             <Filters
               selectedPosition={selectedPosition}
               onPositionChange={handlePositionChange}
+              selectedTeam={selectedTeam}
+              onTeamChange={handleTeamChange}
+              availableTeams={availableTeams}
+              selectedScoringFormat={selectedScoringFormat}
+              onScoringFormatChange={handleScoringFormatChange}
               searchQuery={searchQuery}
               onSearchChange={handleSearchChange}
               selectedSeason={selectedSeason}
@@ -196,7 +254,7 @@ export default function Charts() {
                 <p className="text-sm mt-2">Try adjusting your filters</p>
               </div>
             ) : (
-              <>
+              <div className="space-y-2">
                 <PlayerTable
                   players={paginatedPlayers}
                   selectedPosition={selectedPosition}
@@ -213,11 +271,18 @@ export default function Charts() {
                   itemsPerPage={ITEMS_PER_PAGE}
                   onPageChange={setCurrentPage}
                 />
-              </>
+              </div>
             )}
           </div>
         </div>
       </main>
+
+      <PlayerCard
+        player={selectedPlayer}
+        isOpen={selectedPlayer !== null}
+        onClose={() => setSelectedPlayer(null)}
+        initialSeason={selectedSeason || availableSeasons[0]?.year || 2024}
+      />
     </div>
   )
 }
