@@ -223,3 +223,52 @@ export interface WeeklyStats {
   fantasy_points: number
   fantasy_points_ppr: number
 }
+
+export interface ScheduleData {
+  game_id: string
+  season: number
+  game_type: string
+  week: number
+  gameday?: string
+  weekday?: string
+  gametime?: string
+  away_team: string
+  away_score?: number
+  home_team: string
+  home_score?: number
+  location?: string
+  result?: number
+  total?: number
+  overtime?: number
+  old_game_id?: string
+  gsis?: number
+  nfl_detail_id?: string
+  pfr?: string
+  pff?: number
+  espn?: number
+  ftn?: number
+  away_rest?: number
+  home_rest?: number
+  away_moneyline?: number
+  home_moneyline?: number
+  spread_line?: number
+  away_spread_odds?: number
+  home_spread_odds?: number
+  total_line?: number
+  under_odds?: number
+  over_odds?: number
+  div_game?: number
+  roof?: string
+  surface?: string
+  temp?: number
+  wind?: number
+  away_qb_id?: string
+  home_qb_id?: string
+  away_qb_name?: string
+  home_qb_name?: string
+  away_coach?: string
+  home_coach?: string
+  referee?: string
+  stadium_id?: string
+  stadium?: string
+}

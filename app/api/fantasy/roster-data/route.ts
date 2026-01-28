@@ -6,7 +6,7 @@ export interface RosterDataResponse {
   rosterData: RosterData | null
 }
 
-export async function GET(request: NextRequest) {
+export function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const rosterDataResults = await getRosterData({
+    const rosterDataResults = getRosterData({
       gsis_id: gsisId,
       season,
     })

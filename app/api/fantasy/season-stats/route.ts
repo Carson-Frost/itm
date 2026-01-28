@@ -8,7 +8,7 @@ export interface SeasonStatsResponse {
   availableSeasons: number[]
 }
 
-export async function GET(request: NextRequest) {
+export function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
 
@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
       : undefined
 
     // Get available seasons
-    const availableSeasons = await getAvailableSeasons()
+    const availableSeasons = getAvailableSeasons()
 
     // Only fetch player data if season is specified
     let players: Player[] = []
     if (season !== undefined) {
-      const seasonStats = await getSeasonStats({
+      const seasonStats = getSeasonStats({
         season,
         position: position && position !== 'ALL' ? position : undefined,
         playerName,

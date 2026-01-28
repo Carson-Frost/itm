@@ -18,9 +18,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Player, Position } from "@/lib/mock-fantasy-data"
 import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
-import { WeeklyStats as DBWeeklyStats, RosterData } from "@/lib/types/mongodb-schemas"
+import { WeeklyStats as DBWeeklyStats, RosterData, ScheduleData } from "@/lib/types/mongodb-schemas"
 import { WeeklyStatsResponse } from "@/app/api/fantasy/weekly-stats/route"
 import { RosterDataResponse } from "@/app/api/fantasy/roster-data/route"
+import { ScheduleResponse } from "@/app/api/schedule/route"
 
 interface PlayerCardProps {
   player: Player | null
@@ -29,9 +30,12 @@ interface PlayerCardProps {
   initialSeason: number
 }
 
+type WeekStatus = 'played' | 'dnp' | 'bye' | 'upcoming'
+
 interface WeeklyStats {
   week: number
   opponent: string
+  status: WeekStatus
   fantasyPointsPPR: number
   fantasyPointsSTD: number
   fantasyPointsHalf: number
@@ -304,6 +308,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
     async function fetchWeeklyStats() {
       setLoading(true)
       try {
+        // Fetch player weekly stats
         const params = new URLSearchParams({
           playerId: player.playerId,
           season: selectedSeason.toString(),
@@ -316,33 +321,48 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
 
         const data: WeeklyStatsResponse = await response.json()
 
-        // If no weeks data, return empty stats
-        if (!data.weeks) {
+        // Get player's team from the first week of data
+        const playerTeam = data.weeks?.[0]?.team
+        if (!playerTeam || !data.weeks) {
           setWeeklyStats([])
           return
         }
 
-        // Create a map of week number to stats
+        // Fetch schedule data for the team
+        const scheduleParams = new URLSearchParams({
+          season: selectedSeason.toString(),
+          team: playerTeam,
+        })
+        const scheduleResponse = await fetch(`/api/schedule?${scheduleParams}`)
+        const scheduleData: ScheduleResponse = scheduleResponse.ok
+          ? await scheduleResponse.json()
+          : { games: [], availableSeasons: [], availableWeeks: [], lastImportDate: null }
+
+        const lastImportDate = scheduleData.lastImportDate ? new Date(scheduleData.lastImportDate) : null
+
+        // Create maps for quick lookup
         const weekMap = new Map<number, DBWeeklyStats>()
         data.weeks.forEach((week) => {
           weekMap.set(week.week, week)
         })
 
-        // Determine which weeks to show: always at least 17, plus any weeks with data beyond that
-        const weeksWithData = data.weeks.map(w => w.week)
-        const maxWeek = Math.max(17, ...weeksWithData)
+        const scheduleMap = new Map<number, ScheduleData>()
+        scheduleData.games.forEach((game) => {
+          scheduleMap.set(game.week, game)
+        })
 
-        // Generate weeks, filling in BYE weeks where data is missing
+        // Generate weeks: 1-18 for regular season, plus playoff weeks where team played
         const formattedStats: WeeklyStats[] = []
-        for (let weekNum = 1; weekNum <= maxWeek; weekNum++) {
+
+        // Regular season weeks 1-18
+        for (let weekNum = 1; weekNum <= 18; weekNum++) {
           const weekData = weekMap.get(weekNum)
+          const gameData = scheduleMap.get(weekNum)
 
           if (weekData) {
-            // Calculate total fumbles from all sources
+            // Player played this week
             const totalFumbles = (weekData.rushing_fumbles || 0) + (weekData.receiving_fumbles || 0) + (weekData.sack_fumbles || 0)
             const totalFumblesLost = (weekData.rushing_fumbles_lost || 0) + (weekData.receiving_fumbles_lost || 0) + (weekData.sack_fumbles_lost || 0)
-
-            // Calculate fantasy points for different scoring formats
             const pprPoints = weekData.fantasy_points_ppr || 0
             const stdPoints = weekData.fantasy_points || 0
             const halfPoints = stdPoints + ((weekData.receptions || 0) * 0.5)
@@ -350,6 +370,118 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
             formattedStats.push({
               week: weekNum,
               opponent: weekData.opponent_team ? `@${weekData.opponent_team}` : '@OPP',
+              status: 'played',
+              fantasyPointsPPR: pprPoints,
+              fantasyPointsSTD: stdPoints,
+              fantasyPointsHalf: halfPoints,
+              carries: weekData.carries || 0,
+              rushingYards: weekData.rushing_yards || 0,
+              rushingTDs: weekData.rushing_tds || 0,
+              targets: weekData.targets || 0,
+              receptions: weekData.receptions || 0,
+              receivingYards: weekData.receiving_yards || 0,
+              receivingTDs: weekData.receiving_tds || 0,
+              attempts: weekData.attempts || 0,
+              completions: weekData.completions || 0,
+              passingYards: weekData.passing_yards || 0,
+              passingTDs: weekData.passing_tds || 0,
+              interceptions: weekData.passing_interceptions || 0,
+              fumbles: totalFumbles,
+              fumblesLost: totalFumblesLost,
+              sacks: weekData.sacks_suffered || 0,
+              sackedYards: Math.abs(weekData.sack_yards_lost || 0),
+              puntReturns: weekData.punt_returns || 0,
+              kickoffReturns: weekData.kickoff_returns || 0,
+              specialTeamsTDs: weekData.special_teams_tds || 0,
+            })
+          } else if (gameData) {
+            // Team had a game scheduled but player has no stats
+            const isHome = gameData.home_team === playerTeam
+            const opponent = isHome ? gameData.away_team : gameData.home_team
+            const gameDate = gameData.gameday ? new Date(gameData.gameday) : null
+
+            // Determine if game has occurred: game date must be before import date
+            const gameOccurred = gameDate && lastImportDate && gameDate < lastImportDate
+
+            formattedStats.push({
+              week: weekNum,
+              opponent: isHome ? `vs ${opponent}` : `@${opponent}`,
+              status: gameOccurred ? 'dnp' : 'upcoming',
+              fantasyPointsPPR: 0,
+              fantasyPointsSTD: 0,
+              fantasyPointsHalf: 0,
+              carries: 0,
+              rushingYards: 0,
+              rushingTDs: 0,
+              targets: 0,
+              receptions: 0,
+              receivingYards: 0,
+              receivingTDs: 0,
+              attempts: 0,
+              completions: 0,
+              passingYards: 0,
+              passingTDs: 0,
+              interceptions: 0,
+              fumbles: 0,
+              fumblesLost: 0,
+              sacks: 0,
+              sackedYards: 0,
+              puntReturns: 0,
+              kickoffReturns: 0,
+              specialTeamsTDs: 0,
+            })
+          } else {
+            // No game scheduled - BYE week
+            formattedStats.push({
+              week: weekNum,
+              opponent: 'BYE',
+              status: 'bye',
+              fantasyPointsPPR: 0,
+              fantasyPointsSTD: 0,
+              fantasyPointsHalf: 0,
+              carries: 0,
+              rushingYards: 0,
+              rushingTDs: 0,
+              targets: 0,
+              receptions: 0,
+              receivingYards: 0,
+              receivingTDs: 0,
+              attempts: 0,
+              completions: 0,
+              passingYards: 0,
+              passingTDs: 0,
+              interceptions: 0,
+              fumbles: 0,
+              fumblesLost: 0,
+              sacks: 0,
+              sackedYards: 0,
+              puntReturns: 0,
+              kickoffReturns: 0,
+              specialTeamsTDs: 0,
+            })
+          }
+        }
+
+        // Playoff weeks (19-22) - only show if team had a game
+        for (let weekNum = 19; weekNum <= 22; weekNum++) {
+          const weekData = weekMap.get(weekNum)
+          const gameData = scheduleMap.get(weekNum)
+
+          // Only include playoff week if team had a game
+          if (!gameData) continue
+
+          if (weekData) {
+            // Player played
+            const totalFumbles = (weekData.rushing_fumbles || 0) + (weekData.receiving_fumbles || 0) + (weekData.sack_fumbles || 0)
+            const totalFumblesLost = (weekData.rushing_fumbles_lost || 0) + (weekData.receiving_fumbles_lost || 0) + (weekData.sack_fumbles_lost || 0)
+            const pprPoints = weekData.fantasy_points_ppr || 0
+            const stdPoints = weekData.fantasy_points || 0
+            const halfPoints = stdPoints + ((weekData.receptions || 0) * 0.5)
+
+            formattedStats.push({
+              week: weekNum,
+              opponent: weekData.opponent_team ? `@${weekData.opponent_team}` : '@OPP',
+              status: 'played',
               fantasyPointsPPR: pprPoints,
               fantasyPointsSTD: stdPoints,
               fantasyPointsHalf: halfPoints,
@@ -374,10 +506,18 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
               specialTeamsTDs: weekData.special_teams_tds || 0,
             })
           } else {
-            // No data - leave blank
+            // Team had game scheduled but player has no stats
+            const isHome = gameData.home_team === playerTeam
+            const opponent = isHome ? gameData.away_team : gameData.home_team
+            const gameDate = gameData.gameday ? new Date(gameData.gameday) : null
+
+            // Determine if game has occurred
+            const gameOccurred = gameDate && lastImportDate && gameDate < lastImportDate
+
             formattedStats.push({
               week: weekNum,
-              opponent: '',
+              opponent: isHome ? `vs ${opponent}` : `@${opponent}`,
+              status: gameOccurred ? 'dnp' : 'upcoming',
               fantasyPointsPPR: 0,
               fantasyPointsSTD: 0,
               fantasyPointsHalf: 0,
@@ -406,7 +546,6 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
 
         setWeeklyStats(formattedStats)
       } catch (error) {
-        console.error('Error fetching weekly stats:', error)
         setWeeklyStats([])
       } finally {
         setLoading(false)
@@ -945,28 +1084,31 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                             key={week.week}
                             className={cn(
                               "hover:bg-accent/50 transition-colors h-8",
-                              !week.opponent && "bg-muted/30"
+                              week.status !== 'played' && "bg-muted/30"
                             )}
                           >
                             <TableCell className="text-center font-medium text-muted-foreground text-xs py-1.5 px-1">
                               {getPlayoffRound(week.week)?.round || week.week}
                             </TableCell>
-                            <TableCell className="text-center text-xs py-1.5 px-1">
-                              {week.opponent}
+                            <TableCell className={cn(
+                              "text-center text-xs py-1.5 px-1",
+                              week.status === 'dnp' && "text-muted-foreground italic"
+                            )}>
+                              {week.status === 'dnp' ? 'DNP' : week.status === 'upcoming' ? '' : week.opponent}
                             </TableCell>
                             <TableCell className="text-center font-semibold text-xs py-1.5 px-1">
-                              {!week.opponent ? '' : week.fantasyPointsPPR.toFixed(1)}
+                              {week.status === 'played' ? week.fantasyPointsPPR.toFixed(1) : ''}
                             </TableCell>
                             <TableCell className="text-center text-xs py-1.5 px-1">
-                              {!week.opponent ? '' : week.fantasyPointsSTD.toFixed(1)}
+                              {week.status === 'played' ? week.fantasyPointsSTD.toFixed(1) : ''}
                             </TableCell>
                             <TableCell className="text-center text-xs py-1.5 px-1">
-                              {!week.opponent ? '' : week.fantasyPointsHalf.toFixed(1)}
+                              {week.status === 'played' ? week.fantasyPointsHalf.toFixed(1) : ''}
                             </TableCell>
                             {columnGroups.map((group) =>
                               group.columns.map((col, colIndex) => {
                                 const value = week[col.key]
-                                const formattedValue = !week.opponent ? '' : (typeof value === 'number' ? Math.round(value) : '')
+                                const formattedValue = week.status === 'played' ? (typeof value === 'number' ? Math.round(value) : '') : ''
                                 return (
                                   <TableCell
                                     key={col.key}

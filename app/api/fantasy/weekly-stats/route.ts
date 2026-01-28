@@ -7,7 +7,7 @@ export interface WeeklyStatsResponse {
   availableSeasons?: number[]
 }
 
-export async function GET(request: NextRequest) {
+export function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     // If no season provided, return available seasons for this player
     if (!season) {
-      const allStats = await getWeeklyStats({
+      const allStats = getWeeklyStats({
         playerId,
       })
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(response)
     }
 
-    const weeklyStats = await getWeeklyStats({
+    const weeklyStats = getWeeklyStats({
       playerId,
       season,
     })
