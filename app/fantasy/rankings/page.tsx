@@ -186,7 +186,7 @@ export default function FantasyRankings() {
                           <TableCell>
                             <Link
                               href={`/fantasy/rankings/${ranking.id}`}
-                              className="font-medium hover:underline"
+                              className="text-base font-semibold hover:underline"
                             >
                               {ranking.name}
                             </Link>
@@ -213,8 +213,13 @@ export default function FantasyRankings() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell text-right text-sm text-muted-foreground align-middle">
-                            {formatDate(ranking.updatedAt)}
+                          <TableCell className="hidden sm:table-cell text-right align-middle">
+                            <div className="text-xs text-muted-foreground">
+                              Updated {formatDate(ranking.updatedAt)}
+                            </div>
+                            <div className="text-xs text-muted-foreground/60 mt-0.5">
+                              Created {formatDate(ranking.createdAt)}
+                            </div>
                           </TableCell>
                           <TableCell className="w-10 align-middle">
                             <Button
@@ -255,7 +260,7 @@ function RankingsSkeleton() {
           {[...Array(4)].map((_, i) => (
             <TableRow key={i}>
               <TableCell>
-                <Skeleton className="h-4 w-40 mb-2" />
+                <Skeleton className="h-5 w-40 mb-2" />
                 <div className="flex items-center gap-1">
                   <Skeleton className="h-4 w-12 rounded-full" />
                   <Skeleton className="h-4 w-8 rounded-full" />
@@ -264,7 +269,8 @@ function RankingsSkeleton() {
                 </div>
               </TableCell>
               <TableCell className="hidden sm:table-cell text-right">
-                <Skeleton className="h-4 w-20 ml-auto" />
+                <Skeleton className="h-3.5 w-24 ml-auto" />
+                <Skeleton className="h-3.5 w-20 ml-auto mt-1.5" />
               </TableCell>
               <TableCell className="w-10" />
             </TableRow>
