@@ -4,6 +4,7 @@ import { RosterData } from '@/lib/types/mongodb-schemas'
 
 export interface RosterDataResponse {
   rosterData: RosterData | null
+  availableSeasons?: number[]
 }
 
 export function GET(request: NextRequest) {
@@ -22,11 +23,20 @@ export function GET(request: NextRequest) {
       )
     }
 
+    // If no season provided, return available seasons for this player
     if (!season) {
-      return NextResponse.json(
-        { error: 'season is required' },
-        { status: 400 }
-      )
+      const allRosterData = getRosterData({
+        gsis_id: gsisId,
+      })
+
+      const seasons = Array.from(new Set(allRosterData.map(r => r.season))).sort((a, b) => b - a)
+
+      const response: RosterDataResponse = {
+        rosterData: null,
+        availableSeasons: seasons,
+      }
+
+      return NextResponse.json(response)
     }
 
     const rosterDataResults = getRosterData({

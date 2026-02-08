@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+import { PositionBadge } from "@/components/position-badge"
 import { Player, Position } from "@/lib/mock-fantasy-data"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -23,16 +23,6 @@ interface PlayerTableProps {
   sortDirection: SortDirection
   onSort: (field: SortField) => void
   onPlayerClick: (player: Player) => void
-}
-
-function getPositionColor(position: Position): string {
-  const colors = {
-    QB: 'bg-[var(--position-qb)]',
-    RB: 'bg-[var(--position-rb)]',
-    WR: 'bg-[var(--position-wr)]',
-    TE: 'bg-[var(--position-te)]',
-  }
-  return colors[position]
 }
 
 function SortableHeader({
@@ -248,7 +238,7 @@ export function PlayerTable({
                     {player.headshotUrl ? (
                       <img
                         src={player.headshotUrl}
-                        alt={player.name}
+                        alt=""
                         className="h-8 w-8 rounded-full object-cover"
                       />
                     ) : (
@@ -258,14 +248,7 @@ export function PlayerTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-center">
-                  <Badge
-                    className={cn(
-                      getPositionColor(player.position),
-                      "text-white font-semibold text-[10px] h-4 px-1.5"
-                    )}
-                  >
-                    {player.position}
-                  </Badge>
+                  <PositionBadge position={player.position} />
                 </TableCell>
                 <TableCell className="text-center">
                   <span className="text-xs text-muted-foreground">{player.team}</span>

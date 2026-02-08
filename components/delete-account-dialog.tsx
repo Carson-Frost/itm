@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { deleteUserAccount } from "@/lib/auth-actions"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -126,7 +126,7 @@ export function DeleteAccountDialog({ userId, children }: DeleteAccountDialogPro
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {deleting ? "Deleting..." : "Yes, delete my account"}
             </AlertDialogAction>

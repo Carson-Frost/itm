@@ -9,6 +9,7 @@ import { TableSkeleton } from "./components/table-skeleton"
 import { PlayerCard } from "./components/player-card"
 import { Position, Player } from "@/lib/mock-fantasy-data"
 import { SeasonStatsResponse } from "@/app/api/fantasy/season-stats/route"
+import { teamMatchesFilter } from "@/lib/team-utils"
 
 type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries' | 'rushingYards' | 'rushingTDs' | 'targets' | 'receptions' | 'receivingYards' | 'receivingTDs' | 'attempts' | 'completions' | 'passingYards' | 'passingTDs'
 type SortDirection = 'asc' | 'desc'
@@ -130,9 +131,9 @@ export default function Charts() {
       filtered = filtered.filter((p) => p.position === selectedPosition)
     }
 
-    // Filter by team
+    // Filter by team (supports conferences, divisions, and individual teams)
     if (selectedTeam !== 'ALL') {
-      filtered = filtered.filter((p) => p.team === selectedTeam)
+      filtered = filtered.filter((p) => teamMatchesFilter(p.team, selectedTeam))
     }
 
     // Filter by search query

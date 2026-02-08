@@ -4,13 +4,16 @@ import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Search, X } from "lucide-react"
 import { Position } from "@/lib/mock-fantasy-data"
 import { Button } from "@/components/ui/button"
+import { nflTeams, nflDivisions, nflConferences } from "@/lib/team-utils"
 
 type ScoringFormat = 'PPR' | 'Half PPR' | 'STD'
 
@@ -29,12 +32,20 @@ interface FiltersProps {
   availableSeasons: { year: number; label: string }[]
 }
 
+// Get display label for team filter
+function getTeamFilterLabel(value: string): string {
+  if (value === "ALL") return "All"
+  if (nflConferences.includes(value as typeof nflConferences[number])) return value
+  if (nflDivisions.includes(value as typeof nflDivisions[number])) return value
+  return value
+}
+
 export function Filters({
   selectedPosition,
   onPositionChange,
   selectedTeam,
   onTeamChange,
-  availableTeams,
+  availableTeams: _availableTeams,
   selectedScoringFormat,
   onScoringFormatChange,
   searchQuery,
@@ -119,16 +130,29 @@ export function Filters({
               value={selectedTeam}
               onValueChange={onTeamChange}
             >
-              <SelectTrigger className="w-full sm:w-[120px]">
-                <SelectValue placeholder="Team" />
+              <SelectTrigger className="w-full sm:w-[140px]">
+                <SelectValue>{getTeamFilterLabel(selectedTeam)}</SelectValue>
               </SelectTrigger>
-              <SelectContent position="popper" className="!max-h-[500px]">
+              <SelectContent position="popper" className="max-h-[400px]">
                 <SelectItem value="ALL">All</SelectItem>
-                {availableTeams.map((team) => (
-                  <SelectItem key={team} value={team}>
-                    {team}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-muted-foreground">Conferences</SelectLabel>
+                  {nflConferences.map((conf) => (
+                    <SelectItem key={conf} value={conf}>{conf}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-muted-foreground">Divisions</SelectLabel>
+                  {nflDivisions.map((div) => (
+                    <SelectItem key={div} value={div}>{div}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-muted-foreground">Teams</SelectLabel>
+                  {nflTeams.sort((a, b) => a.abbr.localeCompare(b.abbr)).map((team) => (
+                    <SelectItem key={team.abbr} value={team.abbr}>{team.abbr}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>

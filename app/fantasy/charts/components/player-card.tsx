@@ -13,8 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PositionBadge } from "@/components/position-badge"
 import { Player, Position } from "@/lib/mock-fantasy-data"
 import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
@@ -30,7 +30,7 @@ interface PlayerCardProps {
   initialSeason: number
 }
 
-type WeekStatus = 'played' | 'dnp' | 'bye' | 'upcoming'
+type WeekStatus = 'played' | 'no_stats' | 'bye' | 'upcoming'
 
 interface WeeklyStats {
   week: number
@@ -87,16 +87,6 @@ interface CareerSeasonStats {
   specialTeamsTDs: number
 }
 
-function getPositionColor(position: Position): string {
-  const colors = {
-    QB: 'bg-[var(--position-qb)]',
-    RB: 'bg-[var(--position-rb)]',
-    WR: 'bg-[var(--position-wr)]',
-    TE: 'bg-[var(--position-te)]',
-  }
-  return colors[position]
-}
-
 function getPlayoffRound(week: number): { round: string; order: number; label: string } | null {
   switch (week) {
     case 19: return { round: 'WC', order: 1, label: 'Wild Card' }
@@ -125,6 +115,7 @@ function getTeamName(abbreviation: string): string {
     IND: 'Colts',
     JAX: 'Jaguars',
     KC: 'Chiefs',
+    LA: 'Rams',
     LAC: 'Chargers',
     LAR: 'Rams',
     LV: 'Raiders',
@@ -321,9 +312,23 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
 
         const data: WeeklyStatsResponse = await response.json()
 
-        // Get player's team from the first week of data
-        const playerTeam = data.weeks?.[0]?.team
-        if (!playerTeam || !data.weeks) {
+        // Get player's team - first try from weekly stats, fall back to roster data
+        let playerTeam = data.weeks?.[0]?.team
+
+        if (!playerTeam) {
+          // No weekly stats - get team from roster data
+          const rosterParams = new URLSearchParams({
+            gsisId: player.playerId,
+            season: selectedSeason.toString(),
+          })
+          const rosterResponse = await fetch(`/api/fantasy/roster-data?${rosterParams}`)
+          if (rosterResponse.ok) {
+            const rosterData: RosterDataResponse = await rosterResponse.json()
+            playerTeam = rosterData.rosterData?.team
+          }
+        }
+
+        if (!playerTeam) {
           setWeeklyStats([])
           return
         }
@@ -342,9 +347,11 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
 
         // Create maps for quick lookup
         const weekMap = new Map<number, DBWeeklyStats>()
-        data.weeks.forEach((week) => {
-          weekMap.set(week.week, week)
-        })
+        if (data.weeks) {
+          data.weeks.forEach((week) => {
+            weekMap.set(week.week, week)
+          })
+        }
 
         const scheduleMap = new Map<number, ScheduleData>()
         scheduleData.games.forEach((game) => {
@@ -406,7 +413,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
             formattedStats.push({
               week: weekNum,
               opponent: isHome ? `vs ${opponent}` : `@${opponent}`,
-              status: gameOccurred ? 'dnp' : 'upcoming',
+              status: gameOccurred ? 'no_stats' : 'upcoming',
               fantasyPointsPPR: 0,
               fantasyPointsSTD: 0,
               fantasyPointsHalf: 0,
@@ -430,8 +437,8 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
               kickoffReturns: 0,
               specialTeamsTDs: 0,
             })
-          } else {
-            // No game scheduled - BYE week
+          } else if (weekNum !== 18) {
+            // No game scheduled - BYE week (week 18 is never a bye)
             formattedStats.push({
               week: weekNum,
               opponent: 'BYE',
@@ -517,7 +524,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
             formattedStats.push({
               week: weekNum,
               opponent: isHome ? `vs ${opponent}` : `@${opponent}`,
-              status: gameOccurred ? 'dnp' : 'upcoming',
+              status: gameOccurred ? 'no_stats' : 'upcoming',
               fantasyPointsPPR: 0,
               fantasyPointsSTD: 0,
               fantasyPointsHalf: 0,
@@ -590,19 +597,19 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
     fetchRosterData()
   }, [player, selectedSeason, availableSeasons])
 
-  // Fetch available seasons when player changes
+  // Fetch available seasons from roster data when player changes
   useEffect(() => {
     if (!player) return
 
     async function fetchAvailableSeasons() {
       try {
         const params = new URLSearchParams({
-          playerId: player.playerId,
+          gsisId: player.playerId,
         })
 
-        const response = await fetch(`/api/fantasy/weekly-stats?${params}`)
+        const response = await fetch(`/api/fantasy/roster-data?${params}`)
         if (response.ok) {
-          const data: WeeklyStatsResponse = await response.json()
+          const data: RosterDataResponse = await response.json()
           if (data.availableSeasons) {
             setAvailableSeasons(
               data.availableSeasons.map((year) => ({
@@ -613,7 +620,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
           }
         }
       } catch (error) {
-        console.error('Error fetching available seasons:', error)
+        // Silent fail
       }
     }
 
@@ -804,7 +811,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                 {player.headshotUrl ? (
                   <img
                     src={player.headshotUrl}
-                    alt={player.name}
+                    alt=""
                     className="h-32 w-32 sm:h-40 sm:w-40 rounded-full object-cover relative z-10"
                   />
                 ) : (
@@ -816,18 +823,15 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
               <div className="flex-1 flex flex-col justify-center items-center sm:items-start">
                 <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">{player.name}</h2>
                 <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-                  <Badge
-                    className={cn(
-                      getPositionColor(player.position),
-                      "text-white font-bold text-sm h-6 px-2.5"
-                    )}
-                  >
-                    {player.position}
-                  </Badge>
+                  <PositionBadge position={player.position} className="text-sm h-6 px-2.5" />
                   <span className="text-base sm:text-lg font-semibold">
                     {rosterData?.team ? getTeamName(rosterData.team) : getTeamName(player.team)}
                   </span>
-                  <span className="text-sm sm:text-base text-muted-foreground">#{rosterData?.jersey_number || '00'}</span>
+                  {rosterData?.jersey_number ? (
+                    <span className="text-sm sm:text-base text-muted-foreground">#{rosterData.jersey_number}</span>
+                  ) : (
+                    <Skeleton className="h-5 sm:h-6 w-8" />
+                  )}
                 </div>
 
                 {/* Player Attributes */}
@@ -898,7 +902,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
           </div>
 
           {/* Season Tabs */}
-          <div className="px-2 sm:px-4 overflow-x-auto">
+          <div className="px-2 sm:px-4 pb-2 overflow-x-auto">
             <div className="flex items-center gap-0.5 border-b min-w-max">
               {/* Career Tab */}
               <button
@@ -1090,37 +1094,43 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                             <TableCell className="text-center font-medium text-muted-foreground text-xs py-1.5 px-1">
                               {getPlayoffRound(week.week)?.round || week.week}
                             </TableCell>
-                            <TableCell className={cn(
-                              "text-center text-xs py-1.5 px-1",
-                              week.status === 'dnp' && "text-muted-foreground italic"
-                            )}>
-                              {week.status === 'dnp' ? 'DNP' : week.status === 'upcoming' ? '' : week.opponent}
-                            </TableCell>
-                            <TableCell className="text-center font-semibold text-xs py-1.5 px-1">
-                              {week.status === 'played' ? week.fantasyPointsPPR.toFixed(1) : ''}
-                            </TableCell>
-                            <TableCell className="text-center text-xs py-1.5 px-1">
-                              {week.status === 'played' ? week.fantasyPointsSTD.toFixed(1) : ''}
-                            </TableCell>
-                            <TableCell className="text-center text-xs py-1.5 px-1">
-                              {week.status === 'played' ? week.fantasyPointsHalf.toFixed(1) : ''}
-                            </TableCell>
-                            {columnGroups.map((group) =>
-                              group.columns.map((col, colIndex) => {
-                                const value = week[col.key]
-                                const formattedValue = week.status === 'played' ? (typeof value === 'number' ? Math.round(value) : '') : ''
-                                return (
-                                  <TableCell
-                                    key={col.key}
-                                    className={cn(
-                                      "hidden sm:table-cell text-center text-xs py-1.5 px-1 w-9",
-                                      colIndex === 0 && "pl-4"
-                                    )}
-                                  >
-                                    {formattedValue}
-                                  </TableCell>
-                                )
-                              })
+                            {week.status === 'no_stats' ? (
+                              <TableCell
+                                colSpan={4 + columnGroups.reduce((acc, group) => acc + group.columns.length, 0)}
+                                className="py-1.5 px-1"
+                              />
+                            ) : (
+                              <>
+                                <TableCell className="text-center text-xs py-1.5 px-1">
+                                  {week.status === 'upcoming' ? '' : week.opponent}
+                                </TableCell>
+                                <TableCell className="text-center font-semibold text-xs py-1.5 px-1">
+                                  {week.status === 'played' ? week.fantasyPointsPPR.toFixed(1) : ''}
+                                </TableCell>
+                                <TableCell className="text-center text-xs py-1.5 px-1">
+                                  {week.status === 'played' ? week.fantasyPointsSTD.toFixed(1) : ''}
+                                </TableCell>
+                                <TableCell className="text-center text-xs py-1.5 px-1">
+                                  {week.status === 'played' ? week.fantasyPointsHalf.toFixed(1) : ''}
+                                </TableCell>
+                                {columnGroups.map((group) =>
+                                  group.columns.map((col, colIndex) => {
+                                    const value = week[col.key]
+                                    const formattedValue = week.status === 'played' ? (typeof value === 'number' ? Math.round(value) : '') : ''
+                                    return (
+                                      <TableCell
+                                        key={col.key}
+                                        className={cn(
+                                          "hidden sm:table-cell text-center text-xs py-1.5 px-1 w-9",
+                                          colIndex === 0 && "pl-4"
+                                        )}
+                                      >
+                                        {formattedValue}
+                                      </TableCell>
+                                    )
+                                  })
+                                )}
+                              </>
                             )}
                           </TableRow>
                         ))

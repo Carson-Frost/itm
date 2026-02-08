@@ -40,11 +40,8 @@ export function Navbar() {
           }}>Fantasy</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
-              <ListItem href="/fantasy/rankings/redraft" title="Redraft Rankings">
-                View and analyze redraft fantasy football rankings.
-              </ListItem>
-              <ListItem href="/fantasy/rankings/dynasty" title="Dynasty Rankings">
-                Long-term dynasty league player rankings and valuations.
+              <ListItem href="/fantasy/rankings" title="Rankings">
+                Create and manage your fantasy football rankings.
               </ListItem>
               <ListItem href="/fantasy/rankings/prospects" title="Prospect Rankings">
                 Rookie and college prospect rankings for dynasty leagues.

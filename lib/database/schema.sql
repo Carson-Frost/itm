@@ -308,3 +308,23 @@ CREATE INDEX IF NOT EXISTS idx_schedule_game_type ON schedule_data(game_type);
 CREATE INDEX IF NOT EXISTS idx_schedule_away_team ON schedule_data(away_team);
 CREATE INDEX IF NOT EXISTS idx_schedule_home_team ON schedule_data(home_team);
 CREATE INDEX IF NOT EXISTS idx_schedule_gameday ON schedule_data(gameday);
+
+-- ============================================================
+-- SLEEPER ADP TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sleeper_adp (
+  id TEXT PRIMARY KEY,
+  season INTEGER,
+  player_id TEXT,
+  player_name TEXT,
+  position TEXT,
+  team TEXT,
+  headshot_url TEXT,
+  adp_ppr REAL,
+  adp_half_ppr REAL,
+  adp_std REAL,
+  updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sleeper_adp_season ON sleeper_adp(season);
+CREATE INDEX IF NOT EXISTS idx_sleeper_adp_position ON sleeper_adp(position);
