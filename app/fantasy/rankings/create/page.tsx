@@ -18,8 +18,6 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import {
   Select,
@@ -49,6 +47,7 @@ import { nflTeams, nflDivisions, nflConferences, teamMatchesFilter } from "@/lib
 import { cn } from "@/lib/utils"
 import { BaseSelector, BaseOption } from "@/components/base-selector"
 import { PositionBadge } from "@/components/position-badge"
+import { ScoringBadge, QBFormatBadge, TEPremiumBadge } from "@/components/format-badge"
 
 const allPositions: FantasyPosition[] = ["QB", "RB", "WR", "TE"]
 
@@ -160,7 +159,6 @@ export default function CreateRanking() {
 
     setLoading(true)
     try {
-      // Fetch players from Sleeper ADP
       const response = await fetch('/api/sleeper/adp')
       if (!response.ok) {
         throw new Error('Failed to fetch ADP data')
@@ -168,26 +166,24 @@ export default function CreateRanking() {
 
       const { adp } = await response.json() as { adp: SleeperADP[] }
 
-      // Filter players based on selected positions and team
+      // Filter by position and team
       let filteredPlayers = adp.filter((player) =>
         positions.includes(player.position as FantasyPosition)
       )
 
-      // Apply team filter
       if (teamFilter !== "ALL") {
         filteredPlayers = filteredPlayers.filter((player) =>
           teamMatchesFilter(player.team, teamFilter)
         )
       }
 
-      // Sort by ADP based on scoring format
+      // Sort by ADP for selected scoring format
       filteredPlayers.sort((a, b) => {
         if (scoring === "PPR") return a.adp_ppr - b.adp_ppr
         if (scoring === "Half") return a.adp_half_ppr - b.adp_half_ppr
         return a.adp_std - b.adp_std
       })
 
-      // Convert to RankedPlayer format
       const players: RankedPlayer[] = filteredPlayers.map((player, index) => ({
         rank: index + 1,
         playerId: player.player_id,
@@ -216,8 +212,8 @@ export default function CreateRanking() {
       })
 
       router.push(`/fantasy/rankings/${docRef.id}`)
-    } catch (error) {
-      console.error('Failed to create ranking:', error)
+    } catch {
+      // Handle silently
     } finally {
       setLoading(false)
     }
@@ -232,7 +228,6 @@ export default function CreateRanking() {
     return null
   }
 
-  // Get display label for team filter
   const getTeamFilterLabel = (value: string) => {
     if (value === "ALL") return "All Teams"
     if (nflConferences.includes(value as typeof nflConferences[number])) return value
@@ -244,7 +239,7 @@ export default function CreateRanking() {
     <div className="min-h-screen flex flex-col">
       <Navbar />
       <main className="flex-1 relative z-0">
-        <div className="w-full max-w-[800px] mx-auto px-4 sm:px-6 pt-4 pb-8">
+        <div className="w-full max-w-[1400px] mx-auto pt-4 pb-4 sm:pb-8 px-3 sm:px-6 lg:px-8">
           <Breadcrumb className="mb-4">
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -259,18 +254,12 @@ export default function CreateRanking() {
             </BreadcrumbList>
           </Breadcrumb>
 
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold underline">Create Ranking</h1>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Create Ranking</h1>
 
-          {/* Section 1: Overview */}
-          <section className="space-y-4">
-            <h2 className="text-base font-semibold">Overview</h2>
-
-            {/* Name + Base row */}
-            <div className="flex gap-3 items-end">
-              <div className="flex flex-col gap-1.5 flex-1 max-w-[280px]">
+          <div className="space-y-4">
+            {/* Name + Base */}
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex flex-col gap-1.5 w-full max-w-sm">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-muted-foreground">NAME</label>
                   {nameValidation.message && (
@@ -304,7 +293,7 @@ export default function CreateRanking() {
               <BaseSelector value={base} onChange={setBase} />
             </div>
 
-            {/* Type, Scoring, QBs, TE Premium */}
+            {/* League format */}
             <div className="flex flex-wrap gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">TYPE</label>
@@ -322,46 +311,42 @@ export default function CreateRanking() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">SCORING</label>
                 <Select value={scoring} onValueChange={(v) => setScoring(v as ScoringFormat)}>
-                  <SelectTrigger className="w-[120px]">
+                  <SelectTrigger className="w-[90px]">
                     <SelectValue>
-                      <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border-0">
-                        {scoring === "PPR" ? "PPR" : scoring === "Half" ? "Half PPR" : "Standard"}
-                      </Badge>
+                      <ScoringBadge scoring={scoring} />
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="PPR">
-                      <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border-0">PPR</Badge>
+                      <ScoringBadge scoring="PPR" />
                     </SelectItem>
                     <SelectItem value="Half">
-                      <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border-0">Half PPR</Badge>
+                      <ScoringBadge scoring="Half" />
                     </SelectItem>
                     <SelectItem value="STD">
-                      <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border-0">Standard</Badge>
+                      <ScoringBadge scoring="STD" />
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">QBS</label>
+                <label className="text-xs font-semibold text-muted-foreground">QB FORMAT</label>
                 <Select value={qbFormat} onValueChange={(v) => setQbFormat(v as QBFormat)}>
-                  <SelectTrigger className="w-[100px]">
+                  <SelectTrigger className="w-[90px]">
                     <SelectValue>
-                      <Badge variant="secondary" className="bg-purple-500/20 text-purple-600 dark:text-purple-400 border-0">
-                        {qbFormat === "1qb" ? "1QB" : qbFormat === "superflex" ? "SF" : "2QB"}
-                      </Badge>
+                      <QBFormatBadge qbFormat={qbFormat} />
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1qb">
-                      <Badge variant="secondary" className="bg-purple-500/20 text-purple-600 dark:text-purple-400 border-0">1QB</Badge>
+                      <QBFormatBadge qbFormat="1qb" />
                     </SelectItem>
                     <SelectItem value="superflex">
-                      <Badge variant="secondary" className="bg-purple-500/20 text-purple-600 dark:text-purple-400 border-0">SF</Badge>
+                      <QBFormatBadge qbFormat="superflex" />
                     </SelectItem>
                     <SelectItem value="2qb">
-                      <Badge variant="secondary" className="bg-purple-500/20 text-purple-600 dark:text-purple-400 border-0">2QB</Badge>
+                      <QBFormatBadge qbFormat="2qb" />
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -370,36 +355,27 @@ export default function CreateRanking() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">TE PREMIUM</label>
                 <Select value={String(tePremium)} onValueChange={(v) => setTePremium(Number(v))}>
-                  <SelectTrigger className="w-[110px]">
+                  <SelectTrigger className="w-[100px]">
                     <SelectValue>
-                      <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-0">
-                        {tePremium === 0 ? "None" : tePremium === 0.5 ? "TEP+" : "TEP++"}
-                      </Badge>
+                      <TEPremiumBadge tePremium={tePremium} />
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="0">
-                      <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-0">None</Badge>
+                      <TEPremiumBadge tePremium={0} />
                     </SelectItem>
                     <SelectItem value="0.5">
-                      <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-0">TEP+</Badge>
+                      <TEPremiumBadge tePremium={0.5} />
                     </SelectItem>
                     <SelectItem value="1">
-                      <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-0">TEP++</Badge>
+                      <TEPremiumBadge tePremium={1} />
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-          </section>
 
-          <Separator className="my-6" />
-
-          {/* Section 2: Filters */}
-          <section className="space-y-4">
-            <h2 className="text-base font-semibold">Filters</h2>
-
-            {/* Position and Team row */}
+            {/* Positions + Team */}
             <div className="flex flex-wrap gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">POSITIONS</label>
@@ -469,7 +445,7 @@ export default function CreateRanking() {
               </div>
             </div>
 
-            {/* Age and Draft Class sliders */}
+            {/* Age + Draft Class sliders */}
             <div className="grid grid-cols-2 gap-4 max-w-[400px]">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">AGE</label>
@@ -499,9 +475,9 @@ export default function CreateRanking() {
                 </span>
               </div>
             </div>
-          </section>
+          </div>
 
-          {/* Footer Actions */}
+          {/* Footer */}
           <div className="flex justify-between mt-8 pt-6 border-t">
             <Button variant="outline" onClick={handleCancel}>
               Cancel
