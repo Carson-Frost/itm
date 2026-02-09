@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState, useEffect, useRef } from "react"
+import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { Search } from "lucide-react"
 import {
   DndContext,
@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserRanking, RankedPlayer, FantasyPosition } from "@/lib/types/ranking-schemas"
 import { Player, Position } from "@/lib/mock-fantasy-data"
 import { PlayerCard } from "@/app/fantasy/charts/components/player-card"
@@ -73,20 +74,17 @@ interface PlayerStatsMap {
 
 // Column definitions - exactly matching fantasy charts
 const rushingColumns = [
-  { key: "carries", label: "ATT" },
   { key: "rushingYards", label: "YD" },
   { key: "rushingTDs", label: "TD" },
 ]
 
 const receivingColumns = [
-  { key: "targets", label: "TAR" },
   { key: "receptions", label: "REC" },
   { key: "receivingYards", label: "YD" },
   { key: "receivingTDs", label: "TD" },
 ]
 
 const passingColumns = [
-  { key: "attempts", label: "ATT" },
   { key: "completions", label: "CMP" },
   { key: "passingYards", label: "YD" },
   { key: "passingTDs", label: "TD" },
@@ -151,7 +149,9 @@ export function RankingEditor({
   const [latestSeason, setLatestSeason] = useState(2025)
   const [playerStats, setPlayerStats] = useState<PlayerStatsMap>({})
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterPosition, setFilterPosition] = useState<FantasyPosition | "All">("All")
+  const [filterPosition, setFilterPosition] = useState<FantasyPosition | "All">(
+    ranking.positions.length === 1 ? ranking.positions[0] : "All"
+  )
   const [filterTeam, setFilterTeam] = useState<string>("All")
   const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -380,21 +380,6 @@ export function RankingEditor({
             className="pl-9"
           />
         </div>
-        <Select
-          value={filterPosition}
-          onValueChange={(v) => setFilterPosition(v as FantasyPosition | "All")}
-        >
-          <SelectTrigger className="w-28">
-            <SelectValue placeholder="Position" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All</SelectItem>
-            <SelectItem value="QB">QB</SelectItem>
-            <SelectItem value="RB">RB</SelectItem>
-            <SelectItem value="WR">WR</SelectItem>
-            <SelectItem value="TE">TE</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={filterTeam} onValueChange={setFilterTeam}>
           <SelectTrigger className="w-28">
             <SelectValue placeholder="Team" />
@@ -427,9 +412,30 @@ export function RankingEditor({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
+          {ranking.positions.length > 1 && (
+            <Tabs
+              value={filterPosition}
+              onValueChange={(v) => setFilterPosition(v as FantasyPosition | "All")}
+            >
+              <TabsList className="bg-transparent h-auto p-0 gap-0.5 rounded-none">
+                {["All", ...ranking.positions].map((pos) => (
+                  <TabsTrigger
+                    key={pos}
+                    value={pos}
+                    className="rounded-t-md rounded-b-none border border-transparent border-b-0 px-3.5 py-1.5 text-xs font-medium text-muted-foreground data-[state=active]:text-foreground data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:shadow-none"
+                  >
+                    {pos}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
           <div
             ref={scrollRef}
-            className="border rounded-md overflow-auto max-h-[calc(100vh-320px)]"
+            className={cn(
+              "border overflow-auto max-h-[calc(100vh-320px)]",
+              ranking.positions.length > 1 ? "rounded-md rounded-tl-none" : "rounded-md"
+            )}
           >
             <table className="w-full caption-bottom text-sm">
               <TableHeader className="sticky top-0 z-10 bg-background">
@@ -440,18 +446,20 @@ export function RankingEditor({
                   <TableHead colSpan={3} className="text-center text-xs font-semibold">
                     PLAYER
                   </TableHead>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead colSpan={2} className="text-center text-xs font-semibold">
+                  <TableHead className="w-3 p-0"></TableHead>
+                  <TableHead colSpan={3} className="text-center text-xs font-semibold">
                     FANTASY
                   </TableHead>
                   {hasStats && columnGroups.map((group) => (
-                    <TableHead
-                      key={group.key}
-                      colSpan={group.columns.length}
-                      className="text-center text-xs font-semibold hidden md:table-cell"
-                    >
-                      {group.label}
-                    </TableHead>
+                    <React.Fragment key={group.key}>
+                      <TableHead className="w-3 p-0 hidden md:table-cell"></TableHead>
+                      <TableHead
+                        colSpan={group.columns.length}
+                        className="text-center text-xs font-semibold hidden md:table-cell"
+                      >
+                        {group.label}
+                      </TableHead>
+                    </React.Fragment>
                   ))}
                 </TableRow>
                 {/* Row 2: Specific column headers */}
@@ -461,20 +469,18 @@ export function RankingEditor({
                   <TableHead className="text-center w-48 font-medium">NAME</TableHead>
                   <TableHead className="text-center w-16 font-medium">POS</TableHead>
                   <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
+                  <TableHead className="w-3 p-0"></TableHead>
                   <TableHead className="text-center w-12 font-medium">G</TableHead>
                   <TableHead className="text-center w-16 font-medium">PTS</TableHead>
                   <TableHead className="text-center w-16 font-medium">AVG</TableHead>
                   {hasStats && columnGroups.map((group) =>
                     group.columns.map((col, colIndex) => (
-                      <TableHead
-                        key={col.key}
-                        className={cn(
-                          "text-center font-medium hidden md:table-cell",
-                          colIndex === 0 && "pl-4"
-                        )}
-                      >
-                        {col.label}
-                      </TableHead>
+                      <React.Fragment key={col.key}>
+                        {colIndex === 0 && <TableHead className="w-3 p-0 hidden md:table-cell"></TableHead>}
+                        <TableHead className="text-center font-medium hidden md:table-cell">
+                          {col.label}
+                        </TableHead>
+                      </React.Fragment>
                     ))
                   )}
                 </TableRow>

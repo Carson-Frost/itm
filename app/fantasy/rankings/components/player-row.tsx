@@ -1,6 +1,6 @@
 "use client"
 
-import { memo } from "react"
+import React, { memo } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
@@ -130,6 +130,9 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
         <span className="text-xs text-muted-foreground">{player.team || "FA"}</span>
       </TableCell>
 
+      {/* Spacer */}
+      <TableCell className="w-3 p-0"></TableCell>
+
       {/* Games */}
       <TableCell className="text-center text-xs w-12 align-middle">
         {stats?.gamesPlayed ?? "-"}
@@ -148,15 +151,12 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
       {/* Dynamic stat columns based on column groups */}
       {columnGroups.map((group) =>
         group.columns.map((col, colIndex) => (
-          <TableCell
-            key={col.key}
-            className={cn(
-              "text-center text-sm hidden md:table-cell align-middle",
-              colIndex === 0 && "pl-4"
-            )}
-          >
-            {getStatValue(stats, col.key)}
-          </TableCell>
+          <React.Fragment key={col.key}>
+            {colIndex === 0 && <TableCell className="w-3 p-0 hidden md:table-cell"></TableCell>}
+            <TableCell className="text-center text-sm hidden md:table-cell align-middle">
+              {getStatValue(stats, col.key)}
+            </TableCell>
+          </React.Fragment>
         ))
       )}
     </TableRow>
