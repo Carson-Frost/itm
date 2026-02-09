@@ -1,5 +1,6 @@
 "use client"
 
+import { memo } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
@@ -50,7 +51,10 @@ function getStatValue(stats: PlayerStats | undefined, key: string): string | num
   return value
 }
 
-export function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowProps) {
+// Stable reference to avoid re-creating on every render
+const noAnimations = () => false
+
+export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowProps) {
   const {
     attributes,
     listeners,
@@ -58,10 +62,11 @@ export function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowPro
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: player.playerId })
+  } = useSortable({
+    id: player.playerId,
+    animateLayoutChanges: noAnimations,
+  })
 
-  // Only apply transform/transition to non-dragged items (for reordering animation)
-  // The dragged item uses DragOverlay, so it doesn't need these
   const style = isDragging
     ? undefined
     : {
@@ -74,7 +79,7 @@ export function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowPro
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group hover:bg-accent/50 transition-colors",
+        "group hover:bg-accent/50",
         isDragging && "opacity-40 bg-muted"
       )}
     >
@@ -156,7 +161,7 @@ export function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowPro
       )}
     </TableRow>
   )
-}
+})
 
 // Overlay component for smooth dragging - rendered as div since it's outside table context
 interface PlayerRowOverlayProps {

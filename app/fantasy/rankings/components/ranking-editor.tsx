@@ -19,13 +19,12 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
-  Table,
   TableBody,
   TableHead,
   TableHeader,
   TableRow,
-  TableCell,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import {
@@ -258,7 +257,7 @@ export function RankingEditor({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
+        distance: 3,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -332,8 +331,25 @@ export function RankingEditor({
   }, [])
 
   const hasFilters = filterPosition !== "All" || filterTeam !== "All" || searchQuery
-  const columnGroups = getColumnGroupOrder(filterPosition)
+  const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
+
+  // Memoize the items array so SortableContext doesn't re-measure on every render
+  const displayedPlayers = hasFilters ? filteredPlayers : ranking.players
+  const sortableItems = useMemo(
+    () => displayedPlayers?.map((p) => p.playerId) || [],
+    [displayedPlayers]
+  )
+
+  // Virtualization — only render visible rows to keep drag performant
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: displayedPlayers?.length || 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 49,
+    overscan: 10,
+  })
+  const virtualRows = virtualizer.getVirtualItems()
 
   // Find the active player for the drag overlay
   const activePlayer = activeId
@@ -404,90 +420,102 @@ export function RankingEditor({
           No players match your filters
         </div>
       ) : (
-        <div className="border rounded-md">
-          <Table>
-            <TableHeader>
-              {/* Row 1: Group headers */}
-              <TableRow>
-                <TableHead className="w-8"></TableHead>
-                <TableHead className="w-12"></TableHead>
-                <TableHead colSpan={3} className="text-center text-xs font-semibold">
-                  PLAYER
-                </TableHead>
-                <TableHead className="w-12"></TableHead>
-                <TableHead colSpan={2} className="text-center text-xs font-semibold">
-                  FANTASY
-                </TableHead>
-                {hasStats && columnGroups.map((group) => (
-                  <TableHead
-                    key={group.key}
-                    colSpan={group.columns.length}
-                    className="text-center text-xs font-semibold hidden md:table-cell"
-                  >
-                    {group.label}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div
+            ref={scrollRef}
+            className="border rounded-md overflow-auto max-h-[calc(100vh-320px)]"
+          >
+            <table className="w-full caption-bottom text-sm">
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                {/* Row 1: Group headers */}
+                <TableRow>
+                  <TableHead className="w-8"></TableHead>
+                  <TableHead className="w-12"></TableHead>
+                  <TableHead colSpan={3} className="text-center text-xs font-semibold">
+                    PLAYER
                   </TableHead>
-                ))}
-              </TableRow>
-              {/* Row 2: Specific column headers */}
-              <TableRow>
-                <TableHead className="w-8"></TableHead>
-                <TableHead className="text-center w-12 font-medium">RK</TableHead>
-                <TableHead className="text-center w-48 font-medium">NAME</TableHead>
-                <TableHead className="text-center w-16 font-medium">POS</TableHead>
-                <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
-                <TableHead className="text-center w-12 font-medium">G</TableHead>
-                <TableHead className="text-center w-16 font-medium">PTS</TableHead>
-                <TableHead className="text-center w-16 font-medium">AVG</TableHead>
-                {hasStats && columnGroups.map((group) =>
-                  group.columns.map((col, colIndex) => (
+                  <TableHead className="w-12"></TableHead>
+                  <TableHead colSpan={2} className="text-center text-xs font-semibold">
+                    FANTASY
+                  </TableHead>
+                  {hasStats && columnGroups.map((group) => (
                     <TableHead
-                      key={col.key}
-                      className={cn(
-                        "text-center font-medium hidden md:table-cell",
-                        colIndex === 0 && "pl-4"
-                      )}
+                      key={group.key}
+                      colSpan={group.columns.length}
+                      className="text-center text-xs font-semibold hidden md:table-cell"
                     >
-                      {col.label}
+                      {group.label}
                     </TableHead>
-                  ))
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onDragCancel={handleDragCancel}
-              >
+                  ))}
+                </TableRow>
+                {/* Row 2: Specific column headers */}
+                <TableRow>
+                  <TableHead className="w-8"></TableHead>
+                  <TableHead className="text-center w-12 font-medium">RK</TableHead>
+                  <TableHead className="text-center w-48 font-medium">NAME</TableHead>
+                  <TableHead className="text-center w-16 font-medium">POS</TableHead>
+                  <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
+                  <TableHead className="text-center w-12 font-medium">G</TableHead>
+                  <TableHead className="text-center w-16 font-medium">PTS</TableHead>
+                  <TableHead className="text-center w-16 font-medium">AVG</TableHead>
+                  {hasStats && columnGroups.map((group) =>
+                    group.columns.map((col, colIndex) => (
+                      <TableHead
+                        key={col.key}
+                        className={cn(
+                          "text-center font-medium hidden md:table-cell",
+                          colIndex === 0 && "pl-4"
+                        )}
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 <SortableContext
-                  items={(hasFilters ? filteredPlayers : ranking.players)?.map((p) => p.playerId) || []}
+                  items={sortableItems}
                   strategy={verticalListSortingStrategy}
                 >
-                  {(hasFilters ? filteredPlayers : ranking.players)?.map((player) => (
-                    <PlayerRow
-                      key={player.playerId}
-                      player={player}
-                      stats={playerStats[player.playerId]}
-                      columnGroups={columnGroups}
-                      onClick={handlePlayerClick}
-                    />
-                  ))}
+                  {virtualRows.length > 0 && virtualRows[0].start > 0 && (
+                    <tr style={{ height: virtualRows[0].start }} />
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                    const player = displayedPlayers![virtualRow.index]
+                    return (
+                      <PlayerRow
+                        key={player.playerId}
+                        player={player}
+                        stats={playerStats[player.playerId]}
+                        columnGroups={columnGroups}
+                        onClick={handlePlayerClick}
+                      />
+                    )
+                  })}
+                  {virtualRows.length > 0 && (
+                    <tr style={{ height: virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end }} />
+                  )}
                 </SortableContext>
-                <DragOverlay>
-                  {activePlayer ? (
-                    <PlayerRowOverlay
-                      player={activePlayer}
-                      stats={playerStats[activePlayer.playerId]}
-                      columnGroups={columnGroups}
-                    />
-                  ) : null}
-                </DragOverlay>
-              </DndContext>
-            </TableBody>
-          </Table>
-        </div>
+              </TableBody>
+            </table>
+          </div>
+          <DragOverlay>
+            {activePlayer ? (
+              <PlayerRowOverlay
+                player={activePlayer}
+                stats={playerStats[activePlayer.playerId]}
+                columnGroups={columnGroups}
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Player count */}
