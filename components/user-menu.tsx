@@ -67,7 +67,7 @@ export function UserMenu() {
           </li>
           <li className="mb-1">
             <div
-              className="flex items-center justify-between px-2 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground"
+              className="flex items-center justify-between px-2 py-2 text-sm rounded-sm border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]"
               onClick={toggleTheme}
             >
               <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export function UserMenu() {
             </div>
           </li>
           <li className="mb-1">
-            <Link href="/settings" className="flex items-center gap-2 px-2 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground">
+            <Link href="/settings" className="flex items-center gap-2 px-2 py-2 text-sm rounded-sm border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]">
               <Settings className="h-4 w-4" />
               <span>Settings</span>
             </Link>

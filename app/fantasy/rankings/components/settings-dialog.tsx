@@ -256,7 +256,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
                       <button
                         key={pos}
                         onClick={() => togglePosition(pos)}
-                        className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent"
+                        className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]"
                       >
                         <div className={cn(
                           "h-4 w-4 border rounded flex items-center justify-center",

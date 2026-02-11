@@ -146,6 +146,7 @@ export function RankingEditor({
   onPlayersChange,
 }: RankingEditorProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [latestSeason, setLatestSeason] = useState(2025)
   const [playerStats, setPlayerStats] = useState<PlayerStatsMap>({})
   const [searchQuery, setSearchQuery] = useState("")
@@ -330,6 +331,10 @@ export function RankingEditor({
     setSelectedPlayer(toPlayer(ranked))
   }, [])
 
+  const handlePlayerSelect = useCallback((ranked: RankedPlayer) => {
+    setSelectedPlayerId((prev) => prev === ranked.playerId ? null : ranked.playerId)
+  }, [])
+
   const hasFilters = filterPosition !== "All" || filterTeam !== "All" || searchQuery
   const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
@@ -422,7 +427,7 @@ export function RankingEditor({
                   <TabsTrigger
                     key={pos}
                     value={pos}
-                    className="rounded-t-md rounded-b-none border border-transparent border-b-0 px-3.5 py-1.5 text-xs font-medium text-muted-foreground data-[state=active]:text-foreground data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:shadow-none"
+                    className="rounded-t-md rounded-b-none border border-transparent border-b-0 px-3.5 py-1.5 text-xs font-medium text-muted-foreground data-[state=active]:text-foreground data-[state=active]:bg-muted dark:data-[state=active]:bg-input/30 data-[state=active]:border-border data-[state=active]:shadow-none"
                   >
                     {pos}
                   </TabsTrigger>
@@ -433,12 +438,12 @@ export function RankingEditor({
           <div
             ref={scrollRef}
             className={cn(
-              "border overflow-auto max-h-[calc(100vh-320px)]",
+              "border overflow-auto max-h-[calc(100vh-320px)] bg-card",
               ranking.positions.length > 1 ? "rounded-md rounded-tl-none" : "rounded-md"
             )}
           >
-            <table className="w-full caption-bottom text-sm">
-              <TableHeader className="sticky top-0 z-10 bg-background">
+            <table className="w-full caption-bottom text-sm [&_tbody_tr]:border-0">
+              <TableHeader className="sticky top-0 z-10 bg-muted">
                 {/* Row 1: Group headers */}
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
@@ -501,7 +506,9 @@ export function RankingEditor({
                         player={player}
                         stats={playerStats[player.playerId]}
                         columnGroups={columnGroups}
+                        isSelected={selectedPlayerId === player.playerId}
                         onClick={handlePlayerClick}
+                        onSelect={handlePlayerSelect}
                       />
                     )
                   })}

@@ -40,7 +40,9 @@ interface PlayerRowProps {
   player: RankedPlayer
   stats?: PlayerStats
   columnGroups: ColumnGroup[]
+  isSelected?: boolean
   onClick: (player: RankedPlayer) => void
+  onSelect: (player: RankedPlayer) => void
 }
 
 function getStatValue(stats: PlayerStats | undefined, key: string): string | number {
@@ -54,7 +56,7 @@ function getStatValue(stats: PlayerStats | undefined, key: string): string | num
 // Stable reference to avoid re-creating on every render
 const noAnimations = () => false
 
-export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, onClick }: PlayerRowProps) {
+export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, isSelected, onClick, onSelect }: PlayerRowProps) {
   const {
     attributes,
     listeners,
@@ -78,8 +80,10 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
     <TableRow
       ref={setNodeRef}
       style={style}
+      onClick={() => onSelect(player)}
       className={cn(
-        "group hover:bg-accent/50",
+        "group cursor-pointer",
+        isSelected && "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)] relative z-10",
         isDragging && "opacity-40 bg-muted"
       )}
     >

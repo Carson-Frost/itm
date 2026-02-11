@@ -228,7 +228,7 @@ export function PlayerTable({
               <TableRow
                 key={player.id}
                 onClick={() => onPlayerClick(player)}
-                className="cursor-pointer hover:bg-accent/50 transition-colors"
+                className="cursor-pointer transition-colors"
               >
                 <TableCell className="text-center font-medium text-muted-foreground">
                   {player.rank}

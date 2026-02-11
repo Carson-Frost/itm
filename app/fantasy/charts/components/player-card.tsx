@@ -1036,7 +1036,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                           careerStats.map((season) => (
                             <TableRow
                               key={season.season}
-                              className="hover:bg-accent/50 transition-colors h-8"
+                              className="transition-colors h-8"
                             >
                               <TableCell className="text-center font-medium text-muted-foreground text-xs py-1.5 px-1">
                                 {season.season}
@@ -1087,7 +1087,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                           <TableRow
                             key={week.week}
                             className={cn(
-                              "hover:bg-accent/50 transition-colors h-8",
+                              "transition-colors h-8",
                               week.status !== 'played' && "bg-muted/30"
                             )}
                           >

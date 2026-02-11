@@ -38,7 +38,7 @@ function SettingsRow({
     <div
       onClick={disabled ? undefined : onClick}
       className={`flex items-center justify-between gap-4 py-2 -mx-3 px-3 sm:-mx-6 sm:px-6 rounded-sm ${
-        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-accent/50"
+        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]"
       } transition-colors`}
     >
       {children}
