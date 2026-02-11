@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-
 import { useIsMobile } from "@/hooks/use-mobile"
+import { Logo } from "@/components/logo"
 import { UserMenu } from "@/components/user-menu"
 import {
   NavigationMenu,
@@ -20,10 +20,10 @@ export function Navbar() {
 
   return (
     <nav className="border-b sticky top-0 z-50 bg-background">
-      <div className="flex h-14 items-center px-4 sm:px-6 max-w-[1400px] mx-auto">
-        <Link href="/" className="mr-2 sm:mr-6 flex items-center space-x-2">
-          <span className="font-bold text-lg sm:text-xl">ITM</span>
-        </Link>
+      <div className="flex h-14 items-center px-3 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+        <div className="mr-3 sm:mr-5 flex items-center">
+          <Logo className="text-2xl sm:text-3xl -translate-y-[1px]" />
+        </div>
         <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>
         <NavigationMenuItem>

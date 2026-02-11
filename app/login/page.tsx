@@ -1,9 +1,9 @@
 "use client"
 
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { LoginForm } from "@/components/login-form"
+import { Logo } from "@/components/logo"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -25,9 +25,7 @@ export default function LoginPage() {
       </button>
       <div className="flex flex-col gap-4 pt-4 pb-6 pl-4 pr-6 md:pt-6 md:pb-10 md:pl-6 md:pr-10">
         <div className="flex justify-center gap-2 md:justify-end">
-          <Link href="/" className="font-medium text-xl">
-            ITM
-          </Link>
+          <Logo className="text-3xl" />
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
