@@ -33,7 +33,7 @@ import {
   QBFormat,
   TeamFilter,
 } from "@/lib/types/ranking-schemas"
-import { nflTeamAbbreviations } from "@/lib/team-utils"
+import { nflTeamsByName } from "@/lib/team-utils"
 import { cn } from "@/lib/utils"
 import { PositionBadge } from "@/components/position-badge"
 
@@ -164,7 +164,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
           <section className="space-y-3">
             <h3 className="text-base font-semibold">General</h3>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-muted-foreground">NAME</label>
               <Input
                 value={name}
@@ -175,7 +175,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
             </div>
 
             <div className="flex gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">TYPE</label>
                 <Select value={type} onValueChange={(v) => setType(v as RankingType)}>
                   <SelectTrigger className="w-[100px]">
@@ -187,7 +187,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">SCORING</label>
                 <Select value={scoring} onValueChange={(v) => setScoring(v as ScoringFormat)}>
                   <SelectTrigger className="w-[100px]">
@@ -202,7 +202,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">QBS</label>
                 <Select value={qbFormat} onValueChange={(v) => setQbFormat(v as QBFormat)}>
                   <SelectTrigger className="w-[100px]">
@@ -217,7 +217,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 w-[100px]">
+            <div className="flex flex-col gap-1 w-[100px]">
               <label className="text-xs font-semibold text-muted-foreground">TE PREMIUM</label>
               <Select value={String(tePremium)} onValueChange={(v) => setTePremium(Number(v))}>
                 <SelectTrigger>
@@ -238,7 +238,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
 
             {/* Position and Team */}
             <div className="flex gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">POSITION</label>
                 <Popover open={positionsOpen} onOpenChange={setPositionsOpen}>
                   <PopoverTrigger asChild>
@@ -271,16 +271,16 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
                 </Popover>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">TEAM</label>
                 <Select value={teamFilter} onValueChange={setTeamFilter}>
-                  <SelectTrigger className="w-[100px]">
+                  <SelectTrigger className="w-[130px]">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" className="max-h-[400px]">
                     <SelectItem value="ALL">All</SelectItem>
-                    {nflTeamAbbreviations.map((abbr) => (
-                      <SelectItem key={abbr} value={abbr}>{abbr}</SelectItem>
+                    {nflTeamsByName.map((team) => (
+                      <SelectItem key={team.abbr} value={team.abbr}>{team.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -290,7 +290,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
             {/* Filters - 2 column grid */}
             <div className="grid grid-cols-2 gap-4">
               {/* Age slider */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">AGE</label>
                 <Slider
                   value={ageRange}
@@ -305,7 +305,7 @@ export function SettingsDialog({ ranking, onSave }: SettingsDialogProps) {
               </div>
 
               {/* Draft Class slider */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">DRAFT CLASS</label>
                 <Slider
                   value={draftClassRange}

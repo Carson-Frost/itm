@@ -121,17 +121,7 @@ export default function FantasyRankings() {
       <Navbar />
       <main className="flex-1 relative z-0">
         <div className="w-full max-w-[1400px] mx-auto pt-4 pb-4 sm:pb-8 px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold underline">Fantasy Rankings</h1>
-            {user && (
-              <Button asChild>
-                <Link href="/fantasy/rankings/create">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Ranking
-                </Link>
-              </Button>
-            )}
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-4 underline">Fantasy Rankings</h1>
 
           {authLoading || loading ? (
             <RankingsSkeleton />
@@ -141,8 +131,8 @@ export default function FantasyRankings() {
             <EmptyState />
           ) : (
             <>
-              <div className="flex gap-3 mb-4">
-                <div className="flex flex-col gap-1.5">
+              <div className="flex items-end gap-3 mb-4">
+                <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-muted-foreground">TYPE</label>
                   <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
                     <SelectTrigger className="w-[110px]">
@@ -155,7 +145,7 @@ export default function FantasyRankings() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-muted-foreground">SCORING</label>
                   <Select value={scoringFilter} onValueChange={(v) => setScoringFilter(v as ScoringFilter)}>
                     <SelectTrigger className="w-[110px]">
@@ -169,6 +159,12 @@ export default function FantasyRankings() {
                     </SelectContent>
                   </Select>
                 </div>
+                <Button asChild size="lg" className="ml-auto">
+                  <Link href="/fantasy/rankings/create">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Ranking
+                  </Link>
+                </Button>
               </div>
 
               <div className="border rounded-lg">

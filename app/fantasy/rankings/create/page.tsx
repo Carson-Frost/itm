@@ -43,7 +43,7 @@ import {
   RankedPlayer,
   SleeperADP,
 } from "@/lib/types/ranking-schemas"
-import { nflTeams, nflDivisions, nflConferences, teamMatchesFilter } from "@/lib/team-utils"
+import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
 import { cn } from "@/lib/utils"
 import { BaseSelector, BaseOption } from "@/components/base-selector"
 import { PositionBadge } from "@/components/position-badge"
@@ -228,13 +228,6 @@ export default function CreateRanking() {
     return null
   }
 
-  const getTeamFilterLabel = (value: string) => {
-    if (value === "ALL") return "All Teams"
-    if (nflConferences.includes(value as typeof nflConferences[number])) return value
-    if (nflDivisions.includes(value as typeof nflDivisions[number])) return value
-    return value
-  }
-
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -254,12 +247,12 @@ export default function CreateRanking() {
             </BreadcrumbList>
           </Breadcrumb>
 
-          <h1 className="text-2xl sm:text-3xl font-bold mb-6 underline">Create Ranking</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-4 underline">Create Ranking</h1>
 
           <div className="space-y-4">
             {/* Name + Base */}
             <div className="flex flex-wrap gap-3 items-end">
-              <div className="flex flex-col gap-1.5 w-full max-w-sm">
+              <div className="flex flex-col gap-1 w-full max-w-sm">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-muted-foreground">NAME</label>
                   {nameValidation.message && (
@@ -295,7 +288,7 @@ export default function CreateRanking() {
 
             {/* League format */}
             <div className="flex flex-wrap gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">TYPE</label>
                 <Select value={type} onValueChange={(v) => setType(v as RankingType)}>
                   <SelectTrigger className="w-[100px]">
@@ -308,7 +301,7 @@ export default function CreateRanking() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">SCORING</label>
                 <Select value={scoring} onValueChange={(v) => setScoring(v as ScoringFormat)}>
                   <SelectTrigger className="w-[90px]">
@@ -330,7 +323,7 @@ export default function CreateRanking() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">QB FORMAT</label>
                 <Select value={qbFormat} onValueChange={(v) => setQbFormat(v as QBFormat)}>
                   <SelectTrigger className="w-[90px]">
@@ -352,7 +345,7 @@ export default function CreateRanking() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">TE PREMIUM</label>
                 <Select value={String(tePremium)} onValueChange={(v) => setTePremium(Number(v))}>
                   <SelectTrigger className="w-[100px]">
@@ -377,7 +370,7 @@ export default function CreateRanking() {
 
             {/* Positions + Team */}
             <div className="flex flex-wrap gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">POSITIONS</label>
                 <Popover open={positionsOpen} onOpenChange={setPositionsOpen}>
                   <PopoverTrigger asChild>
@@ -414,14 +407,14 @@ export default function CreateRanking() {
                 </Popover>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">TEAM</label>
                 <Select value={teamFilter} onValueChange={setTeamFilter}>
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-[130px]">
                     <SelectValue>{getTeamFilterLabel(teamFilter)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent position="popper" className="max-h-[400px]">
-                    <SelectItem value="ALL">All Teams</SelectItem>
+                    <SelectItem value="ALL">All</SelectItem>
                     <SelectGroup>
                       <SelectLabel className="text-xs text-muted-foreground">Conferences</SelectLabel>
                       {nflConferences.map((conf) => (
@@ -436,8 +429,8 @@ export default function CreateRanking() {
                     </SelectGroup>
                     <SelectGroup>
                       <SelectLabel className="text-xs text-muted-foreground">Teams</SelectLabel>
-                      {nflTeams.sort((a, b) => a.abbr.localeCompare(b.abbr)).map((team) => (
-                        <SelectItem key={team.abbr} value={team.abbr}>{team.abbr}</SelectItem>
+                      {nflTeamsByName.map((team) => (
+                        <SelectItem key={team.abbr} value={team.abbr}>{team.name}</SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
@@ -447,7 +440,7 @@ export default function CreateRanking() {
 
             {/* Age + Draft Class sliders */}
             <div className="grid grid-cols-2 gap-4 max-w-[400px]">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">AGE</label>
                 <Slider
                   value={ageRange}
@@ -461,7 +454,7 @@ export default function CreateRanking() {
                 </span>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">DRAFT CLASS</label>
                 <Slider
                   value={draftClassRange}

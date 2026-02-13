@@ -57,14 +57,26 @@ export const nflTeams: NFLTeam[] = [
 ]
 
 export const nflDivisions: NFLDivision[] = [
-  'AFC East', 'AFC North', 'AFC South', 'AFC West',
   'NFC East', 'NFC North', 'NFC South', 'NFC West',
+  'AFC East', 'AFC North', 'AFC South', 'AFC West',
 ]
 
-export const nflConferences: NFLConference[] = ['AFC', 'NFC']
+export const nflConferences: NFLConference[] = ['NFC', 'AFC']
 
 // Alphabetically sorted team abbreviations (matches fantasy charts)
 export const nflTeamAbbreviations: string[] = nflTeams.map(t => t.abbr).sort()
+
+// Teams sorted alphabetically by name for dropdowns
+export const nflTeamsByName: NFLTeam[] = [...nflTeams].sort((a, b) => a.name.localeCompare(b.name))
+
+// Display label for a team filter value (team abbr, conference, division, or ALL)
+export function getTeamFilterLabel(value: string): string {
+  if (value === 'ALL') return 'All'
+  if (nflConferences.includes(value as NFLConference)) return value
+  if (nflDivisions.includes(value as NFLDivision)) return value
+  const team = nflTeams.find(t => t.abbr === value)
+  return team?.name ?? value
+}
 
 // Get teams by division
 export function getTeamsByDivision(division: NFLDivision): NFLTeam[] {
@@ -95,7 +107,7 @@ export interface TeamFilterOption {
 
 export function getTeamFilterOptions(): TeamFilterOption[] {
   const options: TeamFilterOption[] = [
-    { value: 'ALL', label: 'All Teams', type: 'all' },
+    { value: 'ALL', label: 'All', type: 'all' },
   ]
 
   // Add conferences

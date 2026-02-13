@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Navbar } from "@/components/navbar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RankingEditor } from "../components/ranking-editor"
-import { UserRanking, RankedPlayer } from "@/lib/types/ranking-schemas"
+import { UserRanking, RankedPlayer, TierSeparator } from "@/lib/types/ranking-schemas"
 
 export default function EditRanking() {
   const { id } = useParams<{ id: string }>()
@@ -86,6 +86,15 @@ export default function EditRanking() {
     [ranking, saveRanking]
   )
 
+  const handleTiersChange = useCallback(
+    (tiers: TierSeparator[]) => {
+      if (!ranking) return
+      setRanking({ ...ranking, tiers })
+      saveRanking({ tiers })
+    },
+    [ranking, saveRanking]
+  )
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/fantasy/rankings")
@@ -131,6 +140,7 @@ export default function EditRanking() {
             saveStatus={saveStatus}
             onSettingsSave={handleSettingsSave}
             onPlayersChange={handlePlayersChange}
+            onTiersChange={handleTiersChange}
           />
         </div>
       </main>

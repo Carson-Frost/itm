@@ -20,7 +20,7 @@ export function ScoringBadge({ scoring, className }: { scoring: ScoringFormat; c
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center text-[10px] font-semibold h-4 px-1.5 rounded-full shrink-0",
+        "inline-flex items-center justify-center text-[10px] font-semibold leading-none pt-px h-4 px-1.5 rounded-full shrink-0",
         scoringStyles[scoring],
         className
       )}
@@ -47,7 +47,7 @@ export function QBFormatBadge({ qbFormat, className }: { qbFormat: QBFormat; cla
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center text-[10px] font-semibold h-4 px-1.5 rounded-full shrink-0",
+        "inline-flex items-center justify-center text-[10px] font-semibold leading-none pt-px h-4 px-1.5 rounded-full shrink-0",
         qbStyles[qbFormat],
         className
       )}
@@ -75,7 +75,7 @@ export function TEPremiumBadge({ tePremium, className }: { tePremium: number; cl
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center text-[10px] font-semibold h-4 px-1.5 rounded-full shrink-0",
+        "inline-flex items-center justify-center text-[10px] font-semibold leading-none pt-px h-4 px-1.5 rounded-full shrink-0",
         tepStyles[tePremium] || tepStyles[0],
         className
       )}

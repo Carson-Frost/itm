@@ -9,6 +9,18 @@ export type QBFormat = '1qb' | 'superflex' | '2qb'
 // Team filter can be 'all', a conference, a division, or a team abbreviation
 export type TeamFilter = string
 
+// Tier separator between player groups
+export interface TierSeparator {
+  id: string        // "tier_<uuid>" — stable ID for DnD
+  label: string     // "Tier 1", "Tier 2", etc.
+  afterRank: number // rank of the player immediately above this line (0 = top)
+}
+
+// Union type for rendering the merged player+tier list
+export type DisplayItem =
+  | { type: "player"; data: RankedPlayer }
+  | { type: "tier"; data: TierSeparator }
+
 // Player in a user's ranking list
 export interface RankedPlayer {
   rank: number
@@ -40,6 +52,7 @@ export interface UserRanking {
   createdAt: Timestamp
   updatedAt: Timestamp
   players: RankedPlayer[]
+  tiers?: TierSeparator[]
 }
 
 // Sleeper ADP data stored in SQLite

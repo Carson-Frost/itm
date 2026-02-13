@@ -13,7 +13,7 @@ import {
 import { Search, X } from "lucide-react"
 import { Position } from "@/lib/mock-fantasy-data"
 import { Button } from "@/components/ui/button"
-import { nflTeams, nflDivisions, nflConferences } from "@/lib/team-utils"
+import { nflTeamsByName, nflDivisions, nflConferences, getTeamFilterLabel } from "@/lib/team-utils"
 
 type ScoringFormat = 'PPR' | 'Half PPR' | 'STD'
 
@@ -30,14 +30,6 @@ interface FiltersProps {
   selectedSeason: number | null
   onSeasonChange: (season: number) => void
   availableSeasons: { year: number; label: string }[]
-}
-
-// Get display label for team filter
-function getTeamFilterLabel(value: string): string {
-  if (value === "ALL") return "All"
-  if (nflConferences.includes(value as typeof nflConferences[number])) return value
-  if (nflDivisions.includes(value as typeof nflDivisions[number])) return value
-  return value
 }
 
 export function Filters({
@@ -58,7 +50,7 @@ export function Filters({
     <div className="pb-3">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end justify-between">
         <div className="flex gap-3 w-full sm:w-auto items-end">
-          <div className="flex flex-col gap-1.5 w-full sm:w-[400px]">
+          <div className="flex flex-col gap-1 w-full sm:w-[400px]">
             <div className="text-xs font-semibold text-muted-foreground invisible">SEARCH</div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -84,7 +76,7 @@ export function Filters({
         </div>
 
         <div className="flex gap-3 w-full sm:w-auto">
-          <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
             <label className="text-xs font-semibold text-muted-foreground">POSITION</label>
             <Select
               value={selectedPosition}
@@ -104,7 +96,7 @@ export function Filters({
           </div>
 
           {selectedSeason !== null && (
-            <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+            <div className="flex flex-col gap-1 w-full sm:w-auto">
               <label className="text-xs font-semibold text-muted-foreground">SEASON</label>
               <Select
                 value={selectedSeason.toString()}
@@ -124,13 +116,13 @@ export function Filters({
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
             <label className="text-xs font-semibold text-muted-foreground">TEAM</label>
             <Select
               value={selectedTeam}
               onValueChange={onTeamChange}
             >
-              <SelectTrigger className="w-full sm:w-[140px]">
+              <SelectTrigger className="w-full sm:w-[130px]">
                 <SelectValue>{getTeamFilterLabel(selectedTeam)}</SelectValue>
               </SelectTrigger>
               <SelectContent position="popper" className="max-h-[400px]">
@@ -149,15 +141,15 @@ export function Filters({
                 </SelectGroup>
                 <SelectGroup>
                   <SelectLabel className="text-xs text-muted-foreground">Teams</SelectLabel>
-                  {nflTeams.sort((a, b) => a.abbr.localeCompare(b.abbr)).map((team) => (
-                    <SelectItem key={team.abbr} value={team.abbr}>{team.abbr}</SelectItem>
+                  {nflTeamsByName.map((team) => (
+                    <SelectItem key={team.abbr} value={team.abbr}>{team.name}</SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
             <label className="text-xs font-semibold text-muted-foreground">FORMAT</label>
             <Select
               value={selectedScoringFormat}

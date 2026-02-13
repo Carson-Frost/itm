@@ -24,7 +24,7 @@ const baseOptions: { value: BaseOption; label: string; disabled?: boolean }[] = 
 
 export function BaseSelector({ value, onChange, disabled }: BaseSelectorProps) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <label className="text-xs font-semibold text-muted-foreground">BASE</label>
         <InfoTooltip content="The starting point for your ranking. Choose a preset to begin with pre-populated players, or start with a blank board." />

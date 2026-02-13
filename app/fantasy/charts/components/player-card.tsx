@@ -823,7 +823,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
               <div className="flex-1 flex flex-col justify-center items-center sm:items-start">
                 <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">{player.name}</h2>
                 <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-                  <PositionBadge position={player.position} className="text-sm h-6 px-2.5" />
+                  <PositionBadge position={player.position} size="expanded" />
                   <span className="text-base sm:text-lg font-semibold">
                     {rosterData?.team ? getTeamName(rosterData.team) : getTeamName(player.team)}
                   </span>

@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
-import { Search } from "lucide-react"
+import { Search, Check, Loader2, Undo2, Redo2, Plus, X } from "lucide-react"
+import { toast } from "sonner"
 import {
   DndContext,
   DragOverlay,
@@ -27,19 +28,27 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { UserRanking, RankedPlayer, FantasyPosition } from "@/lib/types/ranking-schemas"
+import { UserRanking, RankedPlayer, TierSeparator, FantasyPosition, DisplayItem } from "@/lib/types/ranking-schemas"
+import { mergeItems, splitItems, getItemId } from "@/lib/tier-utils"
 import { Player, Position } from "@/lib/mock-fantasy-data"
+import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
 import { PlayerCard } from "@/app/fantasy/charts/components/player-card"
 import { RankingHeader } from "./ranking-header"
+import { SettingsDialog } from "./settings-dialog"
 import { PlayerRow, PlayerRowOverlay } from "./player-row"
+import { TierRow, TierRowOverlay } from "./tier-row"
+import { RemoveTierDialog } from "./remove-tier-dialog"
 import { cn } from "@/lib/utils"
 
 interface RankingEditorProps {
@@ -47,6 +56,7 @@ interface RankingEditorProps {
   saveStatus: "saved" | "saving" | "error"
   onSettingsSave: (updates: Partial<UserRanking>) => void
   onPlayersChange: (players: RankedPlayer[]) => void
+  onTiersChange: (tiers: TierSeparator[]) => void
 }
 
 interface PlayerStatsMap {
@@ -72,22 +82,26 @@ interface PlayerStatsMap {
   }
 }
 
-// Column definitions - exactly matching fantasy charts
+// Column definitions matching fantasy charts
+// wideOnly columns are hidden below xl breakpoint
 const rushingColumns = [
-  { key: "rushingYards", label: "YD" },
-  { key: "rushingTDs", label: "TD" },
+  { key: "carries", label: "ATT", wideOnly: true },
+  { key: "rushingYards", label: "YD", wideOnly: false },
+  { key: "rushingTDs", label: "TD", wideOnly: false },
 ]
 
 const receivingColumns = [
-  { key: "receptions", label: "REC" },
-  { key: "receivingYards", label: "YD" },
-  { key: "receivingTDs", label: "TD" },
+  { key: "targets", label: "TAR", wideOnly: true },
+  { key: "receptions", label: "REC", wideOnly: false },
+  { key: "receivingYards", label: "YD", wideOnly: false },
+  { key: "receivingTDs", label: "TD", wideOnly: false },
 ]
 
 const passingColumns = [
-  { key: "completions", label: "CMP" },
-  { key: "passingYards", label: "YD" },
-  { key: "passingTDs", label: "TD" },
+  { key: "attempts", label: "ATT", wideOnly: true },
+  { key: "completions", label: "CMP", wideOnly: false },
+  { key: "passingYards", label: "YD", wideOnly: false },
+  { key: "passingTDs", label: "TD", wideOnly: false },
 ]
 
 function getColumnGroupOrder(position: FantasyPosition | "All") {
@@ -144,6 +158,7 @@ export function RankingEditor({
   saveStatus,
   onSettingsSave,
   onPlayersChange,
+  onTiersChange,
 }: RankingEditorProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -153,9 +168,10 @@ export function RankingEditor({
   const [filterPosition, setFilterPosition] = useState<FantasyPosition | "All">(
     ranking.positions.length === 1 ? ranking.positions[0] : "All"
   )
-  const [filterTeam, setFilterTeam] = useState<string>("All")
-  const [availableTeams, setAvailableTeams] = useState<string[]>([])
+  const [filterTeam, setFilterTeam] = useState<string>("ALL")
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [removeTierTarget, setRemoveTierTarget] = useState<TierSeparator | null>(null)
+  const [isPlacingTier, setIsPlacingTier] = useState(false)
 
   // Undo/Redo history
   const [history, setHistory] = useState<RankedPlayer[][]>([])
@@ -241,11 +257,6 @@ export function RankingEditor({
             }
           }
           setPlayerStats(statsMap)
-
-          const teams = Array.from(
-            new Set(ranking.players?.map((p) => p.team).filter(Boolean) || [])
-          ).sort()
-          setAvailableTeams(teams)
         }
       } catch {
         // Handle silently
@@ -273,8 +284,8 @@ export function RankingEditor({
       players = players.filter((p) => p.position === filterPosition)
     }
 
-    if (filterTeam !== "All") {
-      players = players.filter((p) => p.team === filterTeam)
+    if (filterTeam !== "ALL") {
+      players = players.filter((p) => teamMatchesFilter(p.team, filterTeam))
     }
 
     if (searchQuery) {
@@ -297,6 +308,11 @@ export function RankingEditor({
     [pushToHistory, onPlayersChange]
   )
 
+  // Check if actual filtering is excluding players (not just filter controls being set)
+  // This matters because single-position rankings initialize filterPosition to that position,
+  // which would otherwise permanently hide tiers
+  const hasFilters = filteredPlayers.length < (ranking.players?.length || 0)
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string)
   }, [])
@@ -308,19 +324,34 @@ export function RankingEditor({
 
       if (!over || active.id === over.id) return
 
-      const allPlayers = ranking.players || []
-      const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
-      const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+      // When filters are active, tiers are hidden — drag is players-only
+      if (hasFilters) {
+        const allPlayers = ranking.players || []
+        const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
+        const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+        if (oldIndex === -1 || newIndex === -1) return
 
+        const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
+          (player, idx) => ({ ...player, rank: idx + 1 })
+        )
+        handlePlayersChangeWithHistory(newPlayers)
+        return
+      }
+
+      // Unfiltered: work on the merged display list
+      const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+      const oldIndex = merged.findIndex((item) => getItemId(item) === active.id)
+      const newIndex = merged.findIndex((item) => getItemId(item) === over.id)
       if (oldIndex === -1 || newIndex === -1) return
 
-      const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
-        (player, idx) => ({ ...player, rank: idx + 1 })
-      )
+      const reordered = arrayMove(merged, oldIndex, newIndex)
+      const { players, tiers } = splitItems(reordered)
 
-      handlePlayersChangeWithHistory(newPlayers)
+      // Only push player changes to undo history (tiers excluded from undo/redo)
+      handlePlayersChangeWithHistory(players)
+      onTiersChange(tiers)
     },
-    [ranking.players, handlePlayersChangeWithHistory]
+    [ranking.players, ranking.tiers, hasFilters, handlePlayersChangeWithHistory, onTiersChange]
   )
 
   const handleDragCancel = useCallback(() => {
@@ -335,69 +366,199 @@ export function RankingEditor({
     setSelectedPlayerId((prev) => prev === ranked.playerId ? null : ranked.playerId)
   }, [])
 
-  const hasFilters = filterPosition !== "All" || filterTeam !== "All" || searchQuery
   const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
 
-  // Memoize the items array so SortableContext doesn't re-measure on every render
-  const displayedPlayers = hasFilters ? filteredPlayers : ranking.players
+  // Build display items: merged with tiers when unfiltered, plain players when filtered
+  const displayItems: DisplayItem[] = useMemo(() => {
+    if (hasFilters) {
+      return filteredPlayers.map((p) => ({ type: "player" as const, data: p }))
+    }
+    return mergeItems(ranking.players || [], ranking.tiers || [])
+  }, [hasFilters, filteredPlayers, ranking.players, ranking.tiers])
+
   const sortableItems = useMemo(
-    () => displayedPlayers?.map((p) => p.playerId) || [],
-    [displayedPlayers]
+    () => displayItems.map(getItemId),
+    [displayItems]
   )
 
   // Virtualization — only render visible rows to keep drag performant
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
-    count: displayedPlayers?.length || 0,
+    count: displayItems.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 49,
+    estimateSize: (index) => displayItems[index]?.type === "tier" ? 32 : 49,
     overscan: 10,
   })
   const virtualRows = virtualizer.getVirtualItems()
 
-  // Find the active player for the drag overlay
-  const activePlayer = activeId
-    ? (ranking.players || []).find((p) => p.playerId === activeId)
+  // Find the active item for the drag overlay
+  const activeItem = activeId
+    ? displayItems.find((item) => getItemId(item) === activeId) ?? null
     : null
+
+  // Tier index lookup for color cycling
+  const tierIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    let tierIdx = 0
+    for (const item of displayItems) {
+      if (item.type === "tier") {
+        map.set(item.data.id, tierIdx++)
+      }
+    }
+    return map
+  }, [displayItems])
+
+  // Show/dismiss persistent toast for tier placement mode
+  const placingTierToastId = "placing-tier"
+
+  useEffect(() => {
+    if (isPlacingTier) {
+      toast("Click a player to add a tier above", {
+        id: placingTierToastId,
+        duration: Infinity,
+        action: {
+          label: "Cancel",
+          onClick: () => setIsPlacingTier(false),
+        },
+      })
+    } else {
+      toast.dismiss(placingTierToastId)
+    }
+  }, [isPlacingTier])
+
+  // Dismiss toast on unmount
+  useEffect(() => {
+    return () => toast.dismiss(placingTierToastId)
+  }, [])
+
+  // Place a tier above the selected player
+  const handlePlaceTier = useCallback((player: RankedPlayer) => {
+    const tiers = ranking.tiers || []
+    const newTier: TierSeparator = {
+      id: `tier_${crypto.randomUUID()}`,
+      label: `Tier ${tiers.length + 1}`,
+      afterRank: player.rank - 1,
+    }
+    onTiersChange([...tiers, newTier])
+    setIsPlacingTier(false)
+  }, [ranking.tiers, onTiersChange])
+
+  // Remove tier after confirmation
+  const handleConfirmRemoveTier = useCallback(() => {
+    if (!removeTierTarget) return
+    const tiers = (ranking.tiers || []).filter((t) => t.id !== removeTierTarget.id)
+    onTiersChange(tiers)
+    setRemoveTierTarget(null)
+  }, [removeTierTarget, ranking.tiers, onTiersChange])
 
   return (
     <div>
-      <RankingHeader
-        ranking={ranking}
-        saveStatus={saveStatus}
-        onSettingsSave={onSettingsSave}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-      />
+      <RankingHeader ranking={ranking} />
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-end gap-3 mb-4">
         <div className="relative w-56">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search"
-            autoComplete="off"
-            className="pl-9"
-          />
+          <div className="text-xs font-semibold text-muted-foreground invisible mb-1">SEARCH</div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search"
+              autoComplete="off"
+              className="pl-9"
+            />
+          </div>
         </div>
-        <Select value={filterTeam} onValueChange={setFilterTeam}>
-          <SelectTrigger className="w-28">
-            <SelectValue placeholder="Team" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Teams</SelectItem>
-            {availableTeams.map((team) => (
-              <SelectItem key={team} value={team}>
-                {team}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground">TEAM</label>
+          <Select value={filterTeam} onValueChange={setFilterTeam}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue>{getTeamFilterLabel(filterTeam)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent position="popper" className="max-h-[400px]">
+              <SelectItem value="ALL">All</SelectItem>
+              <SelectGroup>
+                <SelectLabel className="text-xs text-muted-foreground">Conferences</SelectLabel>
+                {nflConferences.map((conf) => (
+                  <SelectItem key={conf} value={conf}>{conf}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel className="text-xs text-muted-foreground">Divisions</SelectLabel>
+                {nflDivisions.map((div) => (
+                  <SelectItem key={div} value={div}>{div}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel className="text-xs text-muted-foreground">Teams</SelectLabel>
+                {nflTeamsByName.map((team) => (
+                  <SelectItem key={team.abbr} value={team.abbr}>{team.name}</SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            {saveStatus === "saving" && (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="hidden sm:inline">Saving...</span>
+              </>
+            )}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="h-4 w-4 text-green-500" />
+                <span className="hidden sm:inline">Saved</span>
+              </>
+            )}
+            {saveStatus === "error" && (
+              <span className="text-destructive">Error</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo"
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo"
+            >
+              <Redo2 className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button
+            variant={isPlacingTier ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setIsPlacingTier((prev) => !prev)}
+          >
+            {isPlacingTier ? (
+              <>
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Tier
+              </>
+            )}
+          </Button>
+          <SettingsDialog ranking={ranking} onSave={onSettingsSave} />
+        </div>
       </div>
 
       {/* Player Table */}
@@ -448,24 +609,33 @@ export function RankingEditor({
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
                   <TableHead className="w-12"></TableHead>
-                  <TableHead colSpan={3} className="text-center text-xs font-semibold">
+                  <TableHead colSpan={4} className="text-center text-xs font-semibold">
                     PLAYER
                   </TableHead>
-                  <TableHead className="w-3 p-0"></TableHead>
-                  <TableHead colSpan={3} className="text-center text-xs font-semibold">
+                  <TableHead className="w-2 p-0"></TableHead>
+                  <TableHead colSpan={2} className="text-center text-xs font-semibold">
                     FANTASY
                   </TableHead>
-                  {hasStats && columnGroups.map((group) => (
-                    <React.Fragment key={group.key}>
-                      <TableHead className="w-3 p-0 hidden md:table-cell"></TableHead>
-                      <TableHead
-                        colSpan={group.columns.length}
-                        className="text-center text-xs font-semibold hidden md:table-cell"
-                      >
-                        {group.label}
-                      </TableHead>
-                    </React.Fragment>
-                  ))}
+                  {hasStats && columnGroups.map((group) => {
+                    const baseCount = group.columns.filter(c => !c.wideOnly).length
+                    return (
+                      <React.Fragment key={group.key}>
+                        <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>
+                        <TableHead
+                          colSpan={baseCount}
+                          className="text-center text-xs font-semibold hidden md:table-cell lg:hidden"
+                        >
+                          {group.label}
+                        </TableHead>
+                        <TableHead
+                          colSpan={group.columns.length}
+                          className="text-center text-xs font-semibold hidden lg:table-cell"
+                        >
+                          {group.label}
+                        </TableHead>
+                      </React.Fragment>
+                    )
+                  })}
                 </TableRow>
                 {/* Row 2: Specific column headers */}
                 <TableRow>
@@ -474,15 +644,18 @@ export function RankingEditor({
                   <TableHead className="text-center w-48 font-medium">NAME</TableHead>
                   <TableHead className="text-center w-16 font-medium">POS</TableHead>
                   <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
-                  <TableHead className="w-3 p-0"></TableHead>
                   <TableHead className="text-center w-12 font-medium">G</TableHead>
-                  <TableHead className="text-center w-16 font-medium">PTS</TableHead>
-                  <TableHead className="text-center w-16 font-medium">AVG</TableHead>
+                  <TableHead className="w-2 p-0"></TableHead>
+                  <TableHead className="text-center w-12 font-medium">PTS</TableHead>
+                  <TableHead className="text-center w-12 font-medium">AVG</TableHead>
                   {hasStats && columnGroups.map((group) =>
                     group.columns.map((col, colIndex) => (
                       <React.Fragment key={col.key}>
-                        {colIndex === 0 && <TableHead className="w-3 p-0 hidden md:table-cell"></TableHead>}
-                        <TableHead className="text-center font-medium hidden md:table-cell">
+                        {colIndex === 0 && <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>}
+                        <TableHead className={cn(
+                          "text-center w-12 font-medium",
+                          col.wideOnly ? "hidden lg:table-cell" : "hidden md:table-cell"
+                        )}>
                           {col.label}
                         </TableHead>
                       </React.Fragment>
@@ -499,16 +672,28 @@ export function RankingEditor({
                     <tr style={{ height: virtualRows[0].start }} />
                   )}
                   {virtualRows.map((virtualRow) => {
-                    const player = displayedPlayers![virtualRow.index]
+                    const item = displayItems[virtualRow.index]
+                    if (item.type === "tier") {
+                      return (
+                        <TierRow
+                          key={item.data.id}
+                          tier={item.data}
+                          index={tierIndexMap.get(item.data.id) ?? 0}
+                          onRemove={setRemoveTierTarget}
+                        />
+                      )
+                    }
+                    const player = item.data
                     return (
                       <PlayerRow
                         key={player.playerId}
                         player={player}
                         stats={playerStats[player.playerId]}
                         columnGroups={columnGroups}
-                        isSelected={selectedPlayerId === player.playerId}
-                        onClick={handlePlayerClick}
-                        onSelect={handlePlayerSelect}
+                        isSelected={!isPlacingTier && selectedPlayerId === player.playerId}
+                        isPlacingTier={isPlacingTier}
+                        onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
+                        onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
                       />
                     )
                   })}
@@ -520,10 +705,14 @@ export function RankingEditor({
             </table>
           </div>
           <DragOverlay>
-            {activePlayer ? (
+            {activeItem?.type === "tier" ? (
+              <TierRowOverlay
+                index={tierIndexMap.get(activeItem.data.id) ?? 0}
+              />
+            ) : activeItem?.type === "player" ? (
               <PlayerRowOverlay
-                player={activePlayer}
-                stats={playerStats[activePlayer.playerId]}
+                player={activeItem.data}
+                stats={playerStats[activeItem.data.playerId]}
                 columnGroups={columnGroups}
               />
             ) : null}
@@ -543,6 +732,13 @@ export function RankingEditor({
         isOpen={!!selectedPlayer}
         onClose={() => setSelectedPlayer(null)}
         initialSeason={latestSeason}
+      />
+
+      <RemoveTierDialog
+        open={!!removeTierTarget}
+        onOpenChange={(open) => !open && setRemoveTierTarget(null)}
+        tierLabel={removeTierTarget ? `Tier ${(tierIndexMap.get(removeTierTarget.id) ?? 0) + 1}` : ""}
+        onConfirm={handleConfirmRemoveTier}
       />
     </div>
   )

@@ -1,5 +1,8 @@
+"use client"
+
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import GradientText from "@/components/GradientText"
 
 export function Logo({
   className,
@@ -9,12 +12,19 @@ export function Logo({
   asLink?: boolean
 }) {
   const text = (
-    <span
-      className={cn("text-xl leading-none text-foreground", className)}
-      style={{ fontFamily: "'Protest Guerrilla', sans-serif" }}
+    <GradientText
+      colors={["var(--primary)", "var(--border)"]}
+      animationSpeed={2}
+      direction="horizontal"
+      className={cn("logo-gradient", className)}
     >
-      ITM
-    </span>
+      <span
+        className="text-xl leading-none"
+        style={{ fontFamily: "'Protest Guerrilla', sans-serif" }}
+      >
+        ITM
+      </span>
+    </GradientText>
   )
 
   if (!asLink) return text

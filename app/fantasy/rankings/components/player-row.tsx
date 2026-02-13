@@ -33,7 +33,7 @@ export interface PlayerStats {
 export interface ColumnGroup {
   key: string
   label: string
-  columns: { key: string; label: string }[]
+  columns: { key: string; label: string; wideOnly: boolean }[]
 }
 
 interface PlayerRowProps {
@@ -41,6 +41,7 @@ interface PlayerRowProps {
   stats?: PlayerStats
   columnGroups: ColumnGroup[]
   isSelected?: boolean
+  isPlacingTier?: boolean
   onClick: (player: RankedPlayer) => void
   onSelect: (player: RankedPlayer) => void
 }
@@ -56,7 +57,7 @@ function getStatValue(stats: PlayerStats | undefined, key: string): string | num
 // Stable reference to avoid re-creating on every render
 const noAnimations = () => false
 
-export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, isSelected, onClick, onSelect }: PlayerRowProps) {
+export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, isSelected, isPlacingTier, onClick, onSelect }: PlayerRowProps) {
   const {
     attributes,
     listeners,
@@ -83,19 +84,26 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
       onClick={() => onSelect(player)}
       className={cn(
         "group cursor-pointer",
-        isSelected && "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)] relative z-10",
-        isDragging && "opacity-40 bg-muted"
+        isSelected && "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)]",
+        isDragging && "opacity-0",
+        isPlacingTier && "hover:bg-primary/10 cursor-cell border-t-2 border-t-transparent hover:border-t-primary"
       )}
     >
       {/* Drag Handle */}
       <TableCell className="w-8 px-2 align-middle">
-        <button
-          className="touch-none text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing flex items-center justify-center"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {isPlacingTier ? (
+          <div className="flex items-center justify-center">
+            <GripVertical className="h-4 w-4 text-muted-foreground/30" />
+          </div>
+        ) : (
+          <button
+            className="touch-none text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing flex items-center justify-center"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
       </TableCell>
 
       {/* Rank */}
@@ -134,21 +142,21 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
         <span className="text-xs text-muted-foreground">{player.team || "FA"}</span>
       </TableCell>
 
-      {/* Spacer */}
-      <TableCell className="w-3 p-0"></TableCell>
-
       {/* Games */}
       <TableCell className="text-center text-xs w-12 align-middle">
         {stats?.gamesPlayed ?? "-"}
       </TableCell>
 
+      {/* Spacer */}
+      <TableCell className="w-2 p-0"></TableCell>
+
       {/* Fantasy Points */}
-      <TableCell className="text-center w-16 align-middle">
+      <TableCell className="text-center w-12 align-middle">
         {stats?.fantasyPoints?.toFixed(1) ?? "-"}
       </TableCell>
 
       {/* Points Per Game */}
-      <TableCell className="text-center w-16 align-middle">
+      <TableCell className="text-center w-12 align-middle">
         {stats?.pointsPerGame?.toFixed(1) ?? "-"}
       </TableCell>
 
@@ -156,8 +164,11 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
       {columnGroups.map((group) =>
         group.columns.map((col, colIndex) => (
           <React.Fragment key={col.key}>
-            {colIndex === 0 && <TableCell className="w-3 p-0 hidden md:table-cell"></TableCell>}
-            <TableCell className="text-center text-sm hidden md:table-cell align-middle">
+            {colIndex === 0 && <TableCell className="w-2 p-0 hidden md:table-cell"></TableCell>}
+            <TableCell className={cn(
+              "text-center text-sm w-12 align-middle",
+              col.wideOnly ? "hidden lg:table-cell" : "hidden md:table-cell"
+            )}>
               {getStatValue(stats, col.key)}
             </TableCell>
           </React.Fragment>

@@ -212,10 +212,55 @@ select,
   cursor: pointer !important;
 }
 
+.btn-chamfer {
+  position: relative;
+  isolation: isolate;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.btn-chamfer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: var(--border);
+  clip-path: polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px);
+}
+
+.btn-chamfer::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  background: var(--primary);
+  clip-path: polygon(8.25px 0%, 100% 0%, 100% calc(100% - 8.25px), calc(100% - 8.25px) 100%, 0% 100%, 0% 8.25px);
+}
+
+.btn-chamfer:hover::after {
+  opacity: 0.9;
+}
+
 :root {
   --success: #00a700;
-  --position-qb: #ab5477;
-  --position-rb: #66af95;
-  --position-wr: #3d91b5;
-  --position-te: #b67d42;
+  --tier-1: oklch(0.78 0.11 85);
+  --tier-2: oklch(0.68 0.10 250);
+  --tier-3: oklch(0.72 0.12 160);
+  --tier-4: oklch(0.65 0.12 300);
+  --tier-5: oklch(0.72 0.12 55);
+  --tier-6: oklch(0.70 0.10 195);
+  --tier-7: oklch(0.70 0.11 10);
+  --tier-8: oklch(0.60 0.02 260);
+}
+
+.dark {
+  --tier-1: oklch(0.65 0.11 85);
+  --tier-2: oklch(0.58 0.10 250);
+  --tier-3: oklch(0.60 0.12 160);
+  --tier-4: oklch(0.55 0.12 300);
+  --tier-5: oklch(0.60 0.12 55);
+  --tier-6: oklch(0.58 0.10 195);
+  --tier-7: oklch(0.58 0.11 10);
+  --tier-8: oklch(0.48 0.02 260);
 }
