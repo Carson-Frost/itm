@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
-import { Search, Check, Loader2, Undo2, Redo2, Plus, X } from "lucide-react"
+import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown } from "lucide-react"
 import { toast } from "sonner"
 import {
   DndContext,
@@ -49,6 +49,7 @@ import { SettingsDialog } from "./settings-dialog"
 import { PlayerRow, PlayerRowOverlay } from "./player-row"
 import { TierRow, TierRowOverlay } from "./tier-row"
 import { RemoveTierDialog } from "./remove-tier-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 interface RankingEditorProps {
@@ -366,6 +367,37 @@ export function RankingEditor({
     setSelectedPlayerId((prev) => prev === ranked.playerId ? null : ranked.playerId)
   }, [])
 
+  // Move relative to the filtered view so position/team tabs are respected
+  const handleMovePlayer = useCallback(
+    (direction: "up" | "down") => {
+      if (!selectedPlayerId) return
+      const allPlayers = ranking.players || []
+
+      const visibleIndex = filteredPlayers.findIndex((p) => p.playerId === selectedPlayerId)
+      if (visibleIndex === -1) return
+
+      const neighborIndex = direction === "up" ? visibleIndex - 1 : visibleIndex + 1
+      if (neighborIndex < 0 || neighborIndex >= filteredPlayers.length) return
+
+      const neighborId = filteredPlayers[neighborIndex].playerId
+      const fromIndex = allPlayers.findIndex((p) => p.playerId === selectedPlayerId)
+      const toIndex = allPlayers.findIndex((p) => p.playerId === neighborId)
+      if (fromIndex === -1 || toIndex === -1) return
+
+      const newPlayers = arrayMove(allPlayers, fromIndex, toIndex).map(
+        (player, idx) => ({ ...player, rank: idx + 1 })
+      )
+      handlePlayersChangeWithHistory(newPlayers)
+    },
+    [selectedPlayerId, ranking.players, filteredPlayers, handlePlayersChangeWithHistory]
+  )
+
+  const selectedFilteredIndex = selectedPlayerId
+    ? filteredPlayers.findIndex((p) => p.playerId === selectedPlayerId)
+    : -1
+  const canMoveUp = selectedFilteredIndex > 0
+  const canMoveDown = selectedFilteredIndex >= 0 && selectedFilteredIndex < filteredPlayers.length - 1
+
   const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
 
@@ -520,26 +552,62 @@ export function RankingEditor({
               <span className="text-destructive">Error</span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleUndo}
-              disabled={!canUndo}
-              title="Undo"
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleRedo}
-              disabled={!canRedo}
-              title="Redo"
-            >
-              <Redo2 className="h-4 w-4" />
-            </Button>
-          </div>
+          <TooltipProvider>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleMovePlayer("up")}
+                    disabled={!canMoveUp}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Move Up</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleMovePlayer("down")}
+                    disabled={!canMoveDown}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Move Down</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Undo</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Redo</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
           <Button
             variant={isPlacingTier ? "secondary" : "outline"}
             size="sm"
