@@ -57,14 +57,14 @@ export const TierRow = memo(function TierRow({ tier, index, onRemove }: TierRowP
 
           {/* Colored line with label */}
           <div className="flex-1 flex items-center gap-2">
-            <div className="flex-1 h-[2px]" style={{ backgroundColor: color }} />
+            <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
             <span
-              className="text-xs font-semibold whitespace-nowrap px-2"
+              className="text-[0.8rem] font-bold whitespace-nowrap px-2"
               style={{ color }}
             >
               {`Tier ${index + 1}`}
             </span>
-            <div className="flex-1 h-[2px]" style={{ backgroundColor: color }} />
+            <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
           </div>
 
           {/* Remove button */}
@@ -94,14 +94,14 @@ export function TierRowOverlay({ index }: TierRowOverlayProps) {
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="flex-1 flex items-center gap-2">
-        <div className="flex-1 h-[2px]" style={{ backgroundColor: color }} />
+        <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
         <span
-          className="text-xs font-semibold whitespace-nowrap px-2"
+          className="text-[0.8rem] font-bold whitespace-nowrap px-2"
           style={{ color }}
         >
           {`Tier ${index + 1}`}
         </span>
-        <div className="flex-1 h-[2px]" style={{ backgroundColor: color }} />
+        <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
       </div>
     </div>
   )

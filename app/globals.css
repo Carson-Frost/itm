@@ -242,16 +242,49 @@ select,
   opacity: 0.9;
 }
 
+.card-chamfer {
+  position: relative;
+  isolation: isolate;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.card-chamfer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: var(--border);
+  clip-path: polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px);
+}
+
+.card-chamfer::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  background: var(--background);
+  clip-path: polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px);
+}
+
+.card-chamfer.card-selected::before {
+  background: var(--primary);
+}
+
+.card-chamfer.card-selected::after {
+  background: color-mix(in oklch, var(--primary) 12%, var(--background));
+}
+
 :root {
   --success: #00a700;
-  --tier-1: oklch(0.78 0.11 85);
-  --tier-2: oklch(0.68 0.10 250);
-  --tier-3: oklch(0.72 0.12 160);
-  --tier-4: oklch(0.65 0.12 300);
-  --tier-5: oklch(0.72 0.12 55);
-  --tier-6: oklch(0.70 0.10 195);
-  --tier-7: oklch(0.70 0.11 10);
-  --tier-8: oklch(0.60 0.02 260);
+  --tier-1: oklch(0.65 0.18 85);
+  --tier-2: oklch(0.55 0.17 250);
+  --tier-3: oklch(0.58 0.18 160);
+  --tier-4: oklch(0.52 0.18 300);
+  --tier-5: oklch(0.60 0.18 55);
+  --tier-6: oklch(0.55 0.17 195);
+  --tier-7: oklch(0.55 0.18 10);
+  --tier-8: oklch(0.45 0.05 260);
 }
 
 .dark {

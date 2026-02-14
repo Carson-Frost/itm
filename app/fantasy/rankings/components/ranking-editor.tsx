@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
-import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown } from "lucide-react"
+import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown, List, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
 import {
   DndContext,
@@ -49,6 +49,7 @@ import { SettingsDialog } from "./settings-dialog"
 import { PlayerRow, PlayerRowOverlay } from "./player-row"
 import { TierRow, TierRowOverlay } from "./tier-row"
 import { RemoveTierDialog } from "./remove-tier-dialog"
+import { TierListView, TierPlayerCardOverlay } from "./tier-list-view"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
@@ -173,6 +174,7 @@ export function RankingEditor({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [removeTierTarget, setRemoveTierTarget] = useState<TierSeparator | null>(null)
   const [isPlacingTier, setIsPlacingTier] = useState(false)
+  const [view, setView] = useState<"list" | "tierlist">("list")
 
   // Undo/Redo history
   const [history, setHistory] = useState<RankedPlayer[][]>([])
@@ -325,7 +327,7 @@ export function RankingEditor({
 
       if (!over || active.id === over.id) return
 
-      // When filters are active, tiers are hidden — drag is players-only
+      // Filtered list: players-only reorder (no tiers visible)
       if (hasFilters) {
         const allPlayers = ranking.players || []
         const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
@@ -339,7 +341,7 @@ export function RankingEditor({
         return
       }
 
-      // Unfiltered: work on the merged display list
+      // Tier list view and unfiltered list view: work on the merged display list
       const merged = mergeItems(ranking.players || [], ranking.tiers || [])
       const oldIndex = merged.findIndex((item) => getItemId(item) === active.id)
       const newIndex = merged.findIndex((item) => getItemId(item) === over.id)
@@ -629,24 +631,10 @@ export function RankingEditor({
         </div>
       </div>
 
-      {/* Player Table */}
-      {(ranking.players?.length || 0) === 0 ? (
-        <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
-          No players found. Try refreshing the page.
-        </div>
-      ) : filteredPlayers.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
-          No players match your filters
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          {ranking.positions.length > 1 && (
+      {/* Tab bar: position tabs (left) + view toggle tabs (right) */}
+      {(ranking.players?.length || 0) > 0 && filteredPlayers.length > 0 && (
+        <div className="flex items-end justify-between">
+          {ranking.positions.length > 1 ? (
             <Tabs
               value={filterPosition}
               onValueChange={(v) => setFilterPosition(v as FantasyPosition | "All")}
@@ -663,130 +651,197 @@ export function RankingEditor({
                 ))}
               </TabsList>
             </Tabs>
+          ) : (
+            <div />
           )}
-          <div
-            ref={scrollRef}
+          <div className="flex gap-0.5">
+            <button
+              onClick={() => setView("list")}
+              className={cn(
+                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                view === "list"
+                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                  : "text-muted-foreground border-transparent hover:text-foreground"
+              )}
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setView("tierlist")}
+              className={cn(
+                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                view === "tierlist"
+                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                  : "text-muted-foreground border-transparent hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Player Table / Tier List */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        {(ranking.players?.length || 0) === 0 ? (
+          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
+            No players found. Try refreshing the page.
+          </div>
+        ) : filteredPlayers.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
+            No players match your filters
+          </div>
+        ) : view === "tierlist" ? (
+          <TierListView
+            players={filteredPlayers}
+            tiers={ranking.tiers ?? []}
+            isPlacingTier={isPlacingTier}
+            selectedPlayerId={isPlacingTier ? null : selectedPlayerId}
+            onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
+            onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
             className={cn(
-              "border overflow-auto max-h-[calc(100vh-320px)] bg-card",
-              ranking.positions.length > 1 ? "rounded-md rounded-tl-none" : "rounded-md"
+              ranking.positions.length > 1 && "rounded-tl-none",
+              "rounded-tr-none"
             )}
-          >
-            <table className="w-full caption-bottom text-sm [&_tbody_tr]:border-0">
-              <TableHeader className="sticky top-0 z-10 bg-muted">
-                {/* Row 1: Group headers */}
-                <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead colSpan={4} className="text-center text-xs font-semibold">
-                    PLAYER
-                  </TableHead>
-                  <TableHead className="w-2 p-0"></TableHead>
-                  <TableHead colSpan={2} className="text-center text-xs font-semibold">
-                    FANTASY
-                  </TableHead>
-                  {hasStats && columnGroups.map((group) => {
-                    const baseCount = group.columns.filter(c => !c.wideOnly).length
-                    return (
-                      <React.Fragment key={group.key}>
-                        <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>
-                        <TableHead
-                          colSpan={baseCount}
-                          className="text-center text-xs font-semibold hidden md:table-cell lg:hidden"
-                        >
-                          {group.label}
-                        </TableHead>
-                        <TableHead
-                          colSpan={group.columns.length}
-                          className="text-center text-xs font-semibold hidden lg:table-cell"
-                        >
-                          {group.label}
-                        </TableHead>
-                      </React.Fragment>
-                    )
-                  })}
-                </TableRow>
-                {/* Row 2: Specific column headers */}
-                <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead className="text-center w-12 font-medium">RK</TableHead>
-                  <TableHead className="text-center w-48 font-medium">NAME</TableHead>
-                  <TableHead className="text-center w-16 font-medium">POS</TableHead>
-                  <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
-                  <TableHead className="text-center w-12 font-medium">G</TableHead>
-                  <TableHead className="w-2 p-0"></TableHead>
-                  <TableHead className="text-center w-12 font-medium">PTS</TableHead>
-                  <TableHead className="text-center w-12 font-medium">AVG</TableHead>
-                  {hasStats && columnGroups.map((group) =>
-                    group.columns.map((col, colIndex) => (
-                      <React.Fragment key={col.key}>
-                        {colIndex === 0 && <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>}
-                        <TableHead className={cn(
-                          "text-center w-12 font-medium",
-                          col.wideOnly ? "hidden lg:table-cell" : "hidden md:table-cell"
-                        )}>
-                          {col.label}
-                        </TableHead>
-                      </React.Fragment>
-                    ))
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <SortableContext
-                  items={sortableItems}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {virtualRows.length > 0 && virtualRows[0].start > 0 && (
-                    <tr style={{ height: virtualRows[0].start }} />
-                  )}
-                  {virtualRows.map((virtualRow) => {
-                    const item = displayItems[virtualRow.index]
-                    if (item.type === "tier") {
+          />
+        ) : (
+          <>
+            <div
+              ref={scrollRef}
+              className={cn(
+                "border overflow-auto max-h-[calc(100vh-320px)] bg-card rounded-md rounded-tr-none",
+                ranking.positions.length > 1 && "rounded-tl-none"
+              )}
+            >
+              <table className="w-full caption-bottom text-sm [&_tbody_tr]:border-0">
+                <TableHeader className="sticky top-0 z-10 bg-muted">
+                  {/* Row 1: Group headers */}
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead colSpan={3} className="text-center text-xs font-semibold">
+                      PLAYER
+                    </TableHead>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-2 p-0"></TableHead>
+                    <TableHead colSpan={2} className="text-center text-xs font-semibold">
+                      FANTASY
+                    </TableHead>
+                    {hasStats && columnGroups.map((group) => {
+                      const baseCount = group.columns.filter(c => !c.wideOnly).length
                       return (
-                        <TierRow
-                          key={item.data.id}
-                          tier={item.data}
-                          index={tierIndexMap.get(item.data.id) ?? 0}
-                          onRemove={setRemoveTierTarget}
+                        <React.Fragment key={group.key}>
+                          <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>
+                          <TableHead
+                            colSpan={baseCount}
+                            className="text-center text-xs font-semibold hidden md:table-cell lg:hidden"
+                          >
+                            {group.label}
+                          </TableHead>
+                          <TableHead
+                            colSpan={group.columns.length}
+                            className="text-center text-xs font-semibold hidden lg:table-cell"
+                          >
+                            {group.label}
+                          </TableHead>
+                        </React.Fragment>
+                      )
+                    })}
+                  </TableRow>
+                  {/* Row 2: Specific column headers */}
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead className="text-center w-12 font-medium">RK</TableHead>
+                    <TableHead className="text-center w-48 font-medium">NAME</TableHead>
+                    <TableHead className="text-center w-16 font-medium">POS</TableHead>
+                    <TableHead className="text-center w-16 font-medium">TEAM</TableHead>
+                    <TableHead className="text-center w-12 font-medium">G</TableHead>
+                    <TableHead className="w-2 p-0"></TableHead>
+                    <TableHead className="text-center w-12 font-medium">PTS</TableHead>
+                    <TableHead className="text-center w-12 font-medium">AVG</TableHead>
+                    {hasStats && columnGroups.map((group) =>
+                      group.columns.map((col, colIndex) => (
+                        <React.Fragment key={col.key}>
+                          {colIndex === 0 && <TableHead className="w-2 p-0 hidden md:table-cell"></TableHead>}
+                          <TableHead className={cn(
+                            "text-center w-12 font-medium",
+                            col.wideOnly ? "hidden lg:table-cell" : "hidden md:table-cell"
+                          )}>
+                            {col.label}
+                          </TableHead>
+                        </React.Fragment>
+                      ))
+                    )}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <SortableContext
+                    items={sortableItems}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {virtualRows.length > 0 && virtualRows[0].start > 0 && (
+                      <tr style={{ height: virtualRows[0].start }} />
+                    )}
+                    {virtualRows.map((virtualRow) => {
+                      const item = displayItems[virtualRow.index]
+                      if (item.type === "tier") {
+                        return (
+                          <TierRow
+                            key={item.data.id}
+                            tier={item.data}
+                            index={tierIndexMap.get(item.data.id) ?? 0}
+                            onRemove={setRemoveTierTarget}
+                          />
+                        )
+                      }
+                      const player = item.data
+                      return (
+                        <PlayerRow
+                          key={player.playerId}
+                          player={player}
+                          stats={playerStats[player.playerId]}
+                          columnGroups={columnGroups}
+                          isSelected={!isPlacingTier && selectedPlayerId === player.playerId}
+                          isPlacingTier={isPlacingTier}
+                          onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
+                          onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
                         />
                       )
-                    }
-                    const player = item.data
-                    return (
-                      <PlayerRow
-                        key={player.playerId}
-                        player={player}
-                        stats={playerStats[player.playerId]}
-                        columnGroups={columnGroups}
-                        isSelected={!isPlacingTier && selectedPlayerId === player.playerId}
-                        isPlacingTier={isPlacingTier}
-                        onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
-                        onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
-                      />
-                    )
-                  })}
-                  {virtualRows.length > 0 && (
-                    <tr style={{ height: virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end }} />
-                  )}
-                </SortableContext>
-              </TableBody>
-            </table>
-          </div>
-          <DragOverlay>
-            {activeItem?.type === "tier" ? (
-              <TierRowOverlay
-                index={tierIndexMap.get(activeItem.data.id) ?? 0}
-              />
-            ) : activeItem?.type === "player" ? (
-              <PlayerRowOverlay
-                player={activeItem.data}
-                stats={playerStats[activeItem.data.playerId]}
-                columnGroups={columnGroups}
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
+                    })}
+                    {virtualRows.length > 0 && (
+                      <tr style={{ height: virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end }} />
+                    )}
+                  </SortableContext>
+                </TableBody>
+              </table>
+            </div>
+          </>
+        )}
+        <DragOverlay>
+          {view === "tierlist" && activeId ? (
+            (() => {
+              const player = filteredPlayers.find((p) => p.playerId === activeId)
+              return player ? <TierPlayerCardOverlay player={player} /> : null
+            })()
+          ) : activeItem?.type === "tier" ? (
+            <TierRowOverlay
+              index={tierIndexMap.get(activeItem.data.id) ?? 0}
+            />
+          ) : activeItem?.type === "player" ? (
+            <PlayerRowOverlay
+              player={activeItem.data}
+              stats={playerStats[activeItem.data.playerId]}
+              columnGroups={columnGroups}
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {/* Player count */}
       <div className="mt-2 text-sm text-muted-foreground">

@@ -239,10 +239,10 @@ export function PlayerTable({
                       <img
                         src={player.headshotUrl}
                         alt=""
-                        className="h-8 w-8 rounded-full object-cover"
+                        className="h-9 w-9 -mt-1.5 -mb-1 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="h-8 w-8 rounded-full bg-muted" />
+                      <div className="h-9 w-9 -mt-1.5 -mb-1 rounded-full bg-muted" />
                     )}
                     <span className="font-medium">{player.name}</span>
                   </div>

@@ -118,10 +118,10 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
             <img
               src={player.headshotUrl}
               alt=""
-              className="h-8 w-8 rounded-full object-cover shrink-0"
+              className="h-9 w-9 -mt-1.5 -mb-1 rounded-full object-cover shrink-0"
             />
           ) : (
-            <div className="h-8 w-8 rounded-full bg-muted shrink-0" />
+            <div className="h-9 w-9 -mt-1.5 -mb-1 rounded-full bg-muted shrink-0" />
           )}
           <button
             onClick={() => onClick(player)}
@@ -204,10 +204,10 @@ export function PlayerRowOverlay({ player, stats, columnGroups }: PlayerRowOverl
           <img
             src={player.headshotUrl}
             alt=""
-            className="h-8 w-8 rounded-full object-cover shrink-0"
+            className="h-9 w-9 -mt-1.5 -mb-1 rounded-full object-cover shrink-0"
           />
         ) : (
-          <div className="h-8 w-8 rounded-full bg-muted shrink-0" />
+          <div className="h-9 w-9 -mt-1.5 -mb-1 rounded-full bg-muted shrink-0" />
         )}
         <span className="font-medium truncate">{player.name}</span>
       </div>

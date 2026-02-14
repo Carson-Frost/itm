@@ -61,6 +61,60 @@ export function mergeItems(players: RankedPlayer[], tiers: TierSeparator[]): Dis
   return items
 }
 
+// Bucket of players belonging to one tier (or untiered)
+export interface TierBucket {
+  tierIndex: number | null
+  label: string
+  color: string | null
+  players: RankedPlayer[]
+}
+
+// Group players into tier buckets based on tier separator positions.
+// Each separator sits AFTER afterRank, so the tier owns players up to and
+// including afterRank. Players after the last separator are "Untiered".
+export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): TierBucket[] {
+  if (!tiers || tiers.length === 0) {
+    return [{ tierIndex: null, label: "Untiered", color: null, players }]
+  }
+
+  const sorted = [...tiers].sort((a, b) => a.afterRank - b.afterRank)
+
+  const buckets: TierBucket[] = []
+  let playerIdx = 0
+
+  // Each tier owns players from the previous boundary up to its afterRank
+  for (let i = 0; i < sorted.length; i++) {
+    const upperBound = sorted[i].afterRank
+    const tierPlayers: RankedPlayer[] = []
+
+    while (playerIdx < players.length && players[playerIdx].rank <= upperBound) {
+      tierPlayers.push(players[playerIdx])
+      playerIdx++
+    }
+
+    if (tierPlayers.length > 0) {
+      buckets.push({
+        tierIndex: i,
+        label: `Tier ${i + 1}`,
+        color: getTierColor(i),
+        players: tierPlayers,
+      })
+    }
+  }
+
+  // Players after the last separator
+  if (playerIdx < players.length) {
+    const remaining: RankedPlayer[] = []
+    while (playerIdx < players.length) {
+      remaining.push(players[playerIdx])
+      playerIdx++
+    }
+    buckets.push({ tierIndex: null, label: "Untiered", color: null, players: remaining })
+  }
+
+  return buckets
+}
+
 // Separate a merged display list back into players and tiers,
 // re-ranking players sequentially and updating tier afterRank values
 export function splitItems(items: DisplayItem[]): { players: RankedPlayer[]; tiers: TierSeparator[] } {
