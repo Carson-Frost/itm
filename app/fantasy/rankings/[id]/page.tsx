@@ -70,29 +70,26 @@ export default function EditRanking() {
 
   const handleSettingsSave = useCallback(
     (updates: Partial<UserRanking>) => {
-      if (!ranking) return
-      setRanking({ ...ranking, ...updates })
+      setRanking((prev) => prev ? { ...prev, ...updates } : prev)
       saveRanking(updates)
     },
-    [ranking, saveRanking]
+    [saveRanking]
   )
 
   const handlePlayersChange = useCallback(
     (players: RankedPlayer[]) => {
-      if (!ranking) return
-      setRanking({ ...ranking, players })
+      setRanking((prev) => prev ? { ...prev, players } : prev)
       saveRanking({ players })
     },
-    [ranking, saveRanking]
+    [saveRanking]
   )
 
   const handleTiersChange = useCallback(
     (tiers: TierSeparator[]) => {
-      if (!ranking) return
-      setRanking({ ...ranking, tiers })
+      setRanking((prev) => prev ? { ...prev, tiers } : prev)
       saveRanking({ tiers })
     },
-    [ranking, saveRanking]
+    [saveRanking]
   )
 
   useEffect(() => {

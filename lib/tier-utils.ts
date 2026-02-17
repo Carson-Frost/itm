@@ -64,6 +64,7 @@ export function mergeItems(players: RankedPlayer[], tiers: TierSeparator[]): Dis
 // Bucket of players belonging to one tier (or untiered)
 export interface TierBucket {
   tierIndex: number | null
+  tierId: string | null
   label: string
   color: string | null
   players: RankedPlayer[]
@@ -74,7 +75,7 @@ export interface TierBucket {
 // including afterRank. Players after the last separator are "Untiered".
 export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): TierBucket[] {
   if (!tiers || tiers.length === 0) {
-    return [{ tierIndex: null, label: "Untiered", color: null, players }]
+    return [{ tierIndex: null, tierId: null, label: "Untiered", color: null, players }]
   }
 
   const sorted = [...tiers].sort((a, b) => a.afterRank - b.afterRank)
@@ -92,14 +93,13 @@ export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): T
       playerIdx++
     }
 
-    if (tierPlayers.length > 0) {
-      buckets.push({
-        tierIndex: i,
-        label: `Tier ${i + 1}`,
-        color: getTierColor(i),
-        players: tierPlayers,
-      })
-    }
+    buckets.push({
+      tierIndex: i,
+      tierId: sorted[i].id,
+      label: `Tier ${i + 1}`,
+      color: getTierColor(i),
+      players: tierPlayers,
+    })
   }
 
   // Players after the last separator
@@ -109,10 +109,30 @@ export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): T
       remaining.push(players[playerIdx])
       playerIdx++
     }
-    buckets.push({ tierIndex: null, label: "Untiered", color: null, players: remaining })
+    buckets.push({ tierIndex: null, tierId: null, label: "Untiered", color: null, players: remaining })
   }
 
   return buckets
+}
+
+// Convert tier buckets back into ranked players and tier separators.
+// Players are re-ranked sequentially across buckets; tier afterRank values
+// are derived from the last player above each separator.
+export function bucketsToData(buckets: TierBucket[]): { players: RankedPlayer[]; tiers: TierSeparator[] } {
+  const merged: DisplayItem[] = []
+  for (const bucket of buckets) {
+    for (const player of bucket.players) {
+      merged.push({ type: "player", data: player })
+    }
+    // Separator goes AFTER its players — afterRank = rank of last player above
+    if (bucket.tierId) {
+      merged.push({
+        type: "tier",
+        data: { id: bucket.tierId, label: bucket.label, afterRank: 0 },
+      })
+    }
+  }
+  return splitItems(merged)
 }
 
 // Separate a merged display list back into players and tiers,
