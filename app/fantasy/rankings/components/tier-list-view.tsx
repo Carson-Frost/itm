@@ -53,18 +53,17 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
 
         {/* Rank — top-right */}
-        <span className="absolute top-1 right-1.5 text-sm font-extrabold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.8),0_0_1px_rgba(0,0,0,0.9)] pointer-events-none">
+        <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground pointer-events-none">
           {player.rank}
         </span>
 
         {/* Drag handle — vertically centered, left edge */}
-        <div className="absolute left-0 top-[48%] -translate-y-1/2 text-white/40 group-hover/card:text-white/80 transition-colors [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))] pointer-events-none">
+        <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/40 group-hover/card:text-muted-foreground/70 dark:text-white/40 dark:group-hover/card:text-white/80 transition-colors dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))] pointer-events-none">
           <GripVertical className="h-5 w-5" />
         </div>
 
-        {/* Info overlay — bottom, inside clipped container. pointer-events-none
-             so drag gestures pass through to the card wrapper underneath. */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-3 pb-0.5 px-2 flex flex-col items-center justify-end pointer-events-none">
+        {/* Info strip — dark nameplate at bottom */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end pointer-events-none">
           <button
             className="text-xs font-semibold text-center truncate w-full leading-tight text-white hover:underline [text-shadow:0_1px_2px_rgba(0,0,0,0.6)] pointer-events-auto"
             onClick={(e) => {
@@ -180,17 +179,17 @@ export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
 
             {/* Rank — top-right */}
-            <span className="absolute top-1 right-1.5 text-sm font-extrabold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.8),0_0_1px_rgba(0,0,0,0.9)]">
+            <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground">
               {player.rank}
             </span>
 
             {/* Drag handle — vertically centered, left edge */}
-            <div className="absolute left-0 top-[48%] -translate-y-1/2 text-white/40 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
+            <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/40 dark:text-white/40 dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
               <GripVertical className="h-5 w-5" />
             </div>
 
-            {/* Info overlay — bottom */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-3 pb-0.5 px-2 flex flex-col items-center justify-end">
+            {/* Info strip — dark nameplate at bottom */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end">
               <span className="text-xs font-semibold text-center truncate w-full leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
                 {cardName(player.name)}
               </span>
@@ -242,14 +241,14 @@ const TierListRow = memo(function TierListRow({
   return (
     <div className="flex border-b last:border-b-0">
       <div
-        className="w-24 shrink-0 flex items-center justify-center p-2"
+        className="w-[126px] shrink-0 flex items-center justify-center p-2"
         style={bucket.color ? {
           backgroundColor: `color-mix(in oklch, ${bucket.color} 20%, transparent)`,
         } : undefined}
       >
         <span
           className={cn(
-            "text-xs font-bold text-center",
+            "text-sm font-extrabold text-center",
             !bucket.color && "text-muted-foreground"
           )}
           style={bucket.color ? { color: bucket.color } : undefined}

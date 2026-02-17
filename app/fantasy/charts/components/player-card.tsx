@@ -796,7 +796,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
         <DialogTitle className="sr-only">{player.name} Player Card</DialogTitle>
         <div className="flex flex-col h-full overflow-hidden">
           {/* Player Header */}
-          <div className="p-3 pb-2 sm:p-5 sm:pb-3">
+          <div className="p-3 pb-4 sm:p-5 sm:pb-4">
             <div className="flex flex-col sm:flex-row items-center sm:items-stretch gap-4 sm:gap-8">
               {/* Player Headshot */}
               <div className="flex-shrink-0 relative">
