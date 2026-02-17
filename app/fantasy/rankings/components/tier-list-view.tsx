@@ -13,6 +13,14 @@ import { cn } from "@/lib/utils"
 const CARD_CHAMFER_OUTER = "polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px)"
 const CARD_CHAMFER_INNER = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)"
 
+// Abbreviate long names to first initial + last name for card display
+function cardName(name: string): string {
+  if (name.length <= 15) return name
+  const spaceIdx = name.indexOf(" ")
+  if (spaceIdx === -1) return name
+  return `${name[0]}. ${name.slice(spaceIdx + 1)}`
+}
+
 // Suppress initial mount animation while keeping smooth reorder transitions
 const layoutChanges: AnimateLayoutChanges = (args) =>
   defaultAnimateLayoutChanges({ ...args, wasDragging: true })
@@ -28,43 +36,49 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
   onClick: (player: RankedPlayer) => void
 }) {
   return (
-    <div className="group/card relative w-full h-full flex flex-col items-center px-2 pt-2 pb-1.5">
-      {/* Rank — top-right */}
-      <span className="absolute top-1.5 right-2.5 text-[11px] text-muted-foreground font-bold">
-        {player.rank}
-      </span>
+    <div className="group/card relative w-full h-full p-[3px]">
+      {/* Headshot — fills entire card, clipped to match chamfered border */}
+      <div className="relative w-full h-full overflow-hidden" style={{ clipPath: CARD_CHAMFER_INNER }}>
+        {player.headshotUrl ? (
+          <img
+            src={player.headshotUrl}
+            alt=""
+            className="w-full h-full object-cover object-top"
+          />
+        ) : (
+          <div className="w-full h-full bg-muted" />
+        )}
 
-      {/* Drag indicator — left edge, vertically centered */}
-      <div className="absolute left-0.5 top-1/2 -translate-y-1/2 text-muted-foreground/30 group-hover/card:text-muted-foreground transition-colors">
-        <GripVertical className="h-4 w-4" />
-      </div>
+        {/* Bottom shadow */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
 
-      {/* Headshot */}
-      {player.headshotUrl ? (
-        <img
-          src={player.headshotUrl}
-          alt=""
-          className="h-11 w-11 rounded-full object-cover shrink-0"
-        />
-      ) : (
-        <div className="h-11 w-11 rounded-full bg-muted shrink-0" />
-      )}
+        {/* Rank — top-right */}
+        <span className="absolute top-1 right-1.5 text-sm font-extrabold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.8),0_0_1px_rgba(0,0,0,0.9)] pointer-events-none">
+          {player.rank}
+        </span>
 
-      {/* Name */}
-      <button
-        className="text-[11px] font-semibold text-center truncate w-full mt-1 hover:underline"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick(player)
-        }}
-      >
-        {player.name}
-      </button>
+        {/* Drag handle — vertically centered, left edge */}
+        <div className="absolute left-0 top-[48%] -translate-y-1/2 text-white/40 group-hover/card:text-white/80 transition-colors [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))] pointer-events-none">
+          <GripVertical className="h-5 w-5" />
+        </div>
 
-      {/* Position · Team */}
-      <div className="flex items-center gap-1.5 mt-0.5">
-        <PositionBadge position={player.position} />
-        <span className="text-[10px] text-muted-foreground font-medium">{player.team}</span>
+        {/* Info overlay — bottom, inside clipped container. pointer-events-none
+             so drag gestures pass through to the card wrapper underneath. */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-3 pb-0.5 px-2 flex flex-col items-center justify-end pointer-events-none">
+          <button
+            className="text-xs font-semibold text-center truncate w-full leading-tight text-white hover:underline [text-shadow:0_1px_2px_rgba(0,0,0,0.6)] pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick(player)
+            }}
+          >
+            {cardName(player.name)}
+          </button>
+          <div className="flex items-center gap-1">
+            <PositionBadge position={player.position} />
+            <span className="text-[10px] text-white/80 font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">{player.team}</span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -111,10 +125,6 @@ const TierPlayerCard = memo(function TierPlayerCard({
     ? undefined
     : {
         transform: CSS.Transform.toString(transform),
-        // Only apply transition while a drag is active. On drop, cards
-        // snap to final positions — prevents the displacement-removal
-        // transition from conflicting with the layout reflow when the
-        // dropped card reappears in a flex-wrap container.
         transition: isSorting ? transition : undefined,
       }
 
@@ -147,7 +157,7 @@ export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
       <div className="w-full h-full bg-border flex items-center justify-center">
         {/* Fill layer */}
         <div
-          className="flex flex-col items-center px-2 pt-2 pb-1.5"
+          className="flex flex-col"
           style={{
             width: "calc(100% - 6px)",
             height: "calc(100% - 6px)",
@@ -155,28 +165,39 @@ export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
             background: "var(--background)",
           }}
         >
-          <div className="relative w-full h-full flex flex-col items-center">
-            <span className="absolute top-0 right-0.5 text-[11px] text-muted-foreground font-bold">
-              {player.rank}
-            </span>
-            <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 text-muted-foreground/30">
-              <GripVertical className="h-4 w-4" />
-            </div>
+          {/* Headshot — fills entire card */}
+          <div className="relative w-full h-full overflow-hidden">
             {player.headshotUrl ? (
               <img
                 src={player.headshotUrl}
                 alt=""
-                className="h-11 w-11 rounded-full object-cover shrink-0"
+                className="w-full h-full object-cover object-top"
               />
             ) : (
-              <div className="h-11 w-11 rounded-full bg-muted shrink-0" />
+              <div className="w-full h-full bg-muted" />
             )}
-            <span className="text-[11px] font-semibold text-center truncate w-full mt-1">
-              {player.name}
+            {/* Bottom shadow */}
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
+
+            {/* Rank — top-right */}
+            <span className="absolute top-1 right-1.5 text-sm font-extrabold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.8),0_0_1px_rgba(0,0,0,0.9)]">
+              {player.rank}
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <PositionBadge position={player.position} />
-              <span className="text-[10px] text-muted-foreground font-medium">{player.team}</span>
+
+            {/* Drag handle — vertically centered, left edge */}
+            <div className="absolute left-0 top-[48%] -translate-y-1/2 text-white/40 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
+              <GripVertical className="h-5 w-5" />
+            </div>
+
+            {/* Info overlay — bottom */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-3 pb-0.5 px-2 flex flex-col items-center justify-end">
+              <span className="text-xs font-semibold text-center truncate w-full leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
+                {cardName(player.name)}
+              </span>
+              <div className="flex items-center gap-1">
+                <PositionBadge position={player.position} />
+                <span className="text-[10px] text-white/80 font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">{player.team}</span>
+              </div>
             </div>
           </div>
         </div>

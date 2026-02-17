@@ -796,7 +796,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
         <DialogTitle className="sr-only">{player.name} Player Card</DialogTitle>
         <div className="flex flex-col h-full overflow-hidden">
           {/* Player Header */}
-          <div className="border-b p-3 sm:p-5">
+          <div className="p-3 pb-2 sm:p-5 sm:pb-3">
             <div className="flex flex-col sm:flex-row items-center sm:items-stretch gap-4 sm:gap-8">
               {/* Player Headshot */}
               <div className="flex-shrink-0 relative">
@@ -902,16 +902,16 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
           </div>
 
           {/* Season Tabs */}
-          <div className="px-2 sm:px-4 pb-2 overflow-x-auto">
-            <div className="flex items-center gap-0.5 border-b min-w-max">
+          <div className="mx-2 sm:mx-4 overflow-x-auto border-b">
+            <div className="flex items-end gap-0.5 min-w-max -mb-px">
               {/* Career Tab */}
               <button
                 onClick={() => setSelectedSeason('Career')}
                 className={cn(
-                  "px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap",
+                  "rounded-t-md rounded-b-none border border-b-0 px-3.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap",
                   selectedSeason === 'Career'
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                    ? "text-foreground bg-muted dark:bg-input/30 border-x-border"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
                 )}
               >
                 Career
@@ -921,10 +921,10 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                   key={season.year}
                   onClick={() => setSelectedSeason(season.year)}
                   className={cn(
-                    "px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap",
+                    "rounded-t-md rounded-b-none border border-b-0 px-3.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap",
                     selectedSeason === season.year
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                      ? "text-foreground bg-muted dark:bg-input/30 border-x-border"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
                   {season.label}

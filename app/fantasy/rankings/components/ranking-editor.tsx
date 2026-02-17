@@ -417,10 +417,14 @@ export function RankingEditor({
   const displayBuckets = useMemo(() => {
     if (!hasFilters) return currentBuckets
     const filteredIds = new Set(filteredPlayers.map(p => p.playerId))
-    return currentBuckets.map(bucket => ({
+    const filtered = currentBuckets.map(bucket => ({
       ...bucket,
       players: bucket.players.filter(p => filteredIds.has(p.playerId)),
     }))
+    // Strip leading tiers that have no visible players
+    const firstWithPlayers = filtered.findIndex(b => b.players.length > 0)
+    if (firstWithPlayers > 0) return filtered.slice(firstWithPlayers)
+    return filtered
   }, [currentBuckets, hasFilters, filteredPlayers])
 
   // Snapshot of buckets at drag start for cancel recovery
@@ -567,8 +571,8 @@ export function RankingEditor({
         return
       }
 
-      // Row list view: filtered list (players only, no tiers visible)
-      if (hasFilters) {
+      // Row list view: search/team filter hides tiers, operate on players only
+      if (searchQuery || filterTeam !== "ALL") {
         const allPlayers = ranking.players || []
         const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
         const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
@@ -593,7 +597,7 @@ export function RankingEditor({
       handlePlayersChangeWithHistory(players)
       onTiersChange(tiers)
     },
-    [view, dragBuckets, currentBuckets, findContainer, ranking.players, ranking.tiers, hasFilters, handlePlayersChangeWithHistory, onTiersChange]
+    [view, dragBuckets, currentBuckets, findContainer, ranking.players, ranking.tiers, searchQuery, filterTeam, handlePlayersChangeWithHistory, onTiersChange]
   )
 
   const handleDragCancel = useCallback(() => {
@@ -632,13 +636,17 @@ export function RankingEditor({
       return mergeItems(filteredPlayers, tiers)
     }
 
-    // Position filter with tiers: build full merged list, then keep only
-    // tiers and players that pass the filter
+    // Position filter with tiers: build full merged list, keep matching
+    // players, and drop leading tiers that appear before the first visible
+    // player (e.g. if no QBs exist in tiers 1-3, those separators are hidden)
     const full = mergeItems(ranking.players || [], tiers)
     const filteredIds = new Set(filteredPlayers.map((p) => p.playerId))
-    return full.filter(
+    const kept = full.filter(
       (item) => item.type === "tier" || filteredIds.has(item.data.playerId)
     )
+    // Strip leading tiers with no players above them
+    const firstPlayerIdx = kept.findIndex((item) => item.type === "player")
+    return firstPlayerIdx > 0 ? kept.slice(firstPlayerIdx) : kept
   }, [hasFilters, filteredPlayers, ranking.players, ranking.tiers, searchQuery, filterTeam])
 
   // Move player up/down in the display list. Operates on the merged list
@@ -720,17 +728,15 @@ export function RankingEditor({
     ? displayItems.find((item) => getItemId(item) === activeId) ?? null
     : null
 
-  // Tier index lookup for color cycling
+  // Tier index lookup for numbering and color cycling. Built from the full
+  // tier list so filtered views preserve original tier numbers (e.g. if
+  // tiers 1-3 are hidden, the first visible tier is still labeled "Tier 4").
   const tierIndexMap = useMemo(() => {
     const map = new Map<string, number>()
-    let tierIdx = 0
-    for (const item of displayItems) {
-      if (item.type === "tier") {
-        map.set(item.data.id, tierIdx++)
-      }
-    }
+    const sorted = [...(ranking.tiers || [])].sort((a, b) => a.afterRank - b.afterRank)
+    sorted.forEach((tier, i) => map.set(tier.id, i))
     return map
-  }, [displayItems])
+  }, [ranking.tiers])
 
   // Show/dismiss persistent toast for tier placement mode
   const placingTierToastId = "placing-tier"
