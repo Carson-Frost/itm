@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useMemo } from "react"
+import { memo, useMemo, useState, useRef, useEffect } from "react"
 import { useSortable, SortableContext, rectSortingStrategy, defaultAnimateLayoutChanges, AnimateLayoutChanges } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
@@ -218,6 +218,7 @@ interface TierListRowProps {
   selectedPlayerId: string | null
   onPlayerClick: (player: RankedPlayer) => void
   onPlayerSelect: (player: RankedPlayer) => void
+  onTierRename?: (tierId: string, newLabel: string) => void
 }
 
 const TierListRow = memo(function TierListRow({
@@ -228,8 +229,12 @@ const TierListRow = memo(function TierListRow({
   selectedPlayerId,
   onPlayerClick,
   onPlayerSelect,
+  onTierRename,
 }: TierListRowProps) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: containerId })
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(bucket.label)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Only provide sortable item IDs for active tiers — inactive tier cards
   // have disabled droppable so the sorting strategy doesn't need their IDs
@@ -238,6 +243,27 @@ const TierListRow = memo(function TierListRow({
     [bucket.players, isActiveTier]
   )
 
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  function commitEdit() {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== bucket.label && bucket.tierId && onTierRename) {
+      onTierRename(bucket.tierId, trimmed)
+    }
+    setIsEditing(false)
+  }
+
+  function startEditing() {
+    if (!bucket.tierId || !onTierRename) return
+    setEditValue(bucket.label)
+    setIsEditing(true)
+  }
+
   return (
     <div className="flex border-b last:border-b-0">
       <div
@@ -245,16 +271,38 @@ const TierListRow = memo(function TierListRow({
         style={bucket.color ? {
           backgroundColor: `color-mix(in oklch, ${bucket.color} 20%, transparent)`,
         } : undefined}
+        onDoubleClick={startEditing}
       >
-        <span
-          className={cn(
-            "text-sm font-extrabold text-center",
-            !bucket.color && "text-muted-foreground"
-          )}
-          style={bucket.color ? { color: bucket.color } : undefined}
-        >
-          {bucket.label}
-        </span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit()
+              if (e.key === "Escape") {
+                setEditValue(bucket.label)
+                setIsEditing(false)
+              }
+            }}
+            autoComplete="off"
+            className="text-sm font-extrabold text-center w-full bg-transparent border border-border rounded-sm outline-none px-1"
+            style={bucket.color ? { color: bucket.color } : undefined}
+          />
+        ) : (
+          <button
+            onClick={startEditing}
+            className={cn(
+              "text-sm font-extrabold text-center",
+              !bucket.color && "text-muted-foreground",
+              bucket.tierId && "hover:underline"
+            )}
+            style={bucket.color ? { color: bucket.color } : undefined}
+          >
+            {bucket.label}
+          </button>
+        )}
       </div>
 
       <SortableContext items={playerIds} strategy={rectSortingStrategy}>
@@ -289,6 +337,7 @@ interface TierListViewProps {
   selectedPlayerId: string | null
   onPlayerClick: (player: RankedPlayer) => void
   onPlayerSelect: (player: RankedPlayer) => void
+  onTierRename: (tierId: string, newLabel: string) => void
   className?: string
 }
 
@@ -299,6 +348,7 @@ export function TierListView({
   selectedPlayerId,
   onPlayerClick,
   onPlayerSelect,
+  onTierRename,
   className,
 }: TierListViewProps) {
   return (
@@ -315,6 +365,7 @@ export function TierListView({
             selectedPlayerId={selectedPlayerId}
             onPlayerClick={onPlayerClick}
             onPlayerSelect={onPlayerSelect}
+            onTierRename={onTierRename}
           />
         )
       })}

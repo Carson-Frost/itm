@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserRanking, RankedPlayer, TierSeparator, FantasyPosition, DisplayItem } from "@/lib/types/ranking-schemas"
-import { mergeItems, splitItems, getItemId, groupByTiers, bucketsToData, TierBucket } from "@/lib/tier-utils"
+import { mergeItems, splitItems, getItemId, groupByTiers, bucketsToData, TierBucket, generateTierColor, recalcDefaultNames, backfillTierColors } from "@/lib/tier-utils"
 import { getBucketContainerId } from "./tier-list-view"
 import { Player, Position } from "@/lib/mock-fantasy-data"
 import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
@@ -65,7 +65,7 @@ interface RankingEditorProps {
   saveStatus: "saved" | "saving" | "error"
   onSettingsSave: (updates: Partial<UserRanking>) => void
   onPlayersChange: (players: RankedPlayer[]) => void
-  onTiersChange: (tiers: TierSeparator[]) => void
+  onTiersChange: (tiers: TierSeparator[], hueIndex?: number) => void
 }
 
 interface PlayerStatsMap {
@@ -559,7 +559,7 @@ export function RankingEditor({
             )
             const { players, tiers } = bucketsToData(reordered)
             handlePlayersChangeWithHistory(players)
-            onTiersChange(tiers)
+            onTiersChange(recalcDefaultNames(tiers))
             return
           }
         }
@@ -567,7 +567,7 @@ export function RankingEditor({
         // Cross-container or same position — persist current bucket state
         const { players, tiers } = bucketsToData(finalBuckets)
         handlePlayersChangeWithHistory(players)
-        onTiersChange(tiers)
+        onTiersChange(recalcDefaultNames(tiers))
         return
       }
 
@@ -595,7 +595,7 @@ export function RankingEditor({
       const { players, tiers } = splitItems(reordered)
 
       handlePlayersChangeWithHistory(players)
-      onTiersChange(tiers)
+      onTiersChange(recalcDefaultNames(tiers))
     },
     [view, dragBuckets, currentBuckets, findContainer, ranking.players, ranking.tiers, searchQuery, filterTeam, handlePlayersChangeWithHistory, onTiersChange]
   )
@@ -695,7 +695,7 @@ export function RankingEditor({
       const reordered = arrayMove(merged, currentIndex, targetIndex)
       const { players, tiers } = splitItems(reordered)
       handlePlayersChangeWithHistory(players)
-      onTiersChange(tiers)
+      onTiersChange(recalcDefaultNames(tiers))
     },
     [selectedPlayerId, hasFilters, ranking.players, ranking.tiers, filteredPlayers, handlePlayersChangeWithHistory, onTiersChange]
   )
@@ -761,25 +761,40 @@ export function RankingEditor({
     return () => toast.dismiss(placingTierToastId)
   }, [])
 
-  // Place a tier above the selected player
+  // Place a tier above the selected player.
+  // Backfills colors on legacy tiers before adding so position-index
+  // shifts from the insertion don't cause existing tiers to change color.
   const handlePlaceTier = useCallback((player: RankedPlayer) => {
-    const tiers = ranking.tiers || []
+    const raw = ranking.tiers || []
+    const { tiers: filled, hueIndex: baseHue } = backfillTierColors(raw, ranking.hueIndex ?? raw.length)
     const newTier: TierSeparator = {
       id: `tier_${crypto.randomUUID()}`,
-      label: `Tier ${tiers.length + 1}`,
+      label: `Tier ${filled.length + 1}`,
       afterRank: player.rank - 1,
+      color: generateTierColor(baseHue),
+      colorCustomized: false,
     }
-    onTiersChange([...tiers, newTier])
+    const updated = recalcDefaultNames([...filled, newTier])
+    onTiersChange(updated, baseHue + 1)
     setIsPlacingTier(false)
-  }, [ranking.tiers, onTiersChange])
+  }, [ranking.tiers, ranking.hueIndex, onTiersChange])
 
   // Remove tier after confirmation
   const handleConfirmRemoveTier = useCallback(() => {
     if (!removeTierTarget) return
-    const tiers = (ranking.tiers || []).filter((t) => t.id !== removeTierTarget.id)
-    onTiersChange(tiers)
+    const remaining = (ranking.tiers || []).filter((t) => t.id !== removeTierTarget.id)
+    const { tiers } = backfillTierColors(remaining, ranking.hueIndex ?? remaining.length)
+    onTiersChange(recalcDefaultNames(tiers))
     setRemoveTierTarget(null)
-  }, [removeTierTarget, ranking.tiers, onTiersChange])
+  }, [removeTierTarget, ranking.tiers, ranking.hueIndex, onTiersChange])
+
+  // Rename a tier label
+  const handleTierRename = useCallback((tierId: string, newLabel: string) => {
+    const tiers = (ranking.tiers || []).map((t) =>
+      t.id === tierId ? { ...t, label: newLabel } : t
+    )
+    onTiersChange(tiers)
+  }, [ranking.tiers, onTiersChange])
 
   return (
     <div>
@@ -1001,6 +1016,7 @@ export function RankingEditor({
             selectedPlayerId={isPlacingTier ? null : selectedPlayerId}
             onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
             onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+            onTierRename={handleTierRename}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"
@@ -1093,6 +1109,7 @@ export function RankingEditor({
                             tier={item.data}
                             index={tierIndexMap.get(item.data.id) ?? 0}
                             onRemove={setRemoveTierTarget}
+                            onRename={handleTierRename}
                           />
                         )
                       }
@@ -1127,6 +1144,7 @@ export function RankingEditor({
             })()
           ) : activeItem?.type === "tier" ? (
             <TierRowOverlay
+              tier={activeItem.data}
               index={tierIndexMap.get(activeItem.data.id) ?? 0}
             />
           ) : activeItem?.type === "player" ? (
@@ -1156,7 +1174,7 @@ export function RankingEditor({
       <RemoveTierDialog
         open={!!removeTierTarget}
         onOpenChange={(open) => !open && setRemoveTierTarget(null)}
-        tierLabel={removeTierTarget ? `Tier ${(tierIndexMap.get(removeTierTarget.id) ?? 0) + 1}` : ""}
+        tierLabel={removeTierTarget?.label ?? ""}
         onConfirm={handleConfirmRemoveTier}
       />
     </div>

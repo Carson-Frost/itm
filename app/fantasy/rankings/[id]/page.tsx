@@ -85,9 +85,11 @@ export default function EditRanking() {
   )
 
   const handleTiersChange = useCallback(
-    (tiers: TierSeparator[]) => {
-      setRanking((prev) => prev ? { ...prev, tiers } : prev)
-      saveRanking({ tiers })
+    (tiers: TierSeparator[], hueIndex?: number) => {
+      const updates: Partial<UserRanking> = { tiers }
+      if (hueIndex !== undefined) updates.hueIndex = hueIndex
+      setRanking((prev) => prev ? { ...prev, ...updates } : prev)
+      saveRanking(updates)
     },
     [saveRanking]
   )

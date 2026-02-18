@@ -1,22 +1,27 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useState, useRef, useEffect } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, X } from "lucide-react"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { TierSeparator } from "@/lib/types/ranking-schemas"
-import { getTierColor } from "@/lib/tier-utils"
+import { generateTierColor } from "@/lib/tier-utils"
 
 const noAnimations = () => false
 
 interface TierRowProps {
   tier: TierSeparator
-  index: number // tier index (0-based) for color cycling
+  index: number // tier index (0-based) for fallback color
   onRemove: (tier: TierSeparator) => void
+  onRename: (tierId: string, newLabel: string) => void
 }
 
-export const TierRow = memo(function TierRow({ tier, index, onRemove }: TierRowProps) {
+export const TierRow = memo(function TierRow({ tier, index, onRemove, onRename }: TierRowProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(tier.label)
+  const inputRef = useRef<HTMLInputElement>(null)
+
   const {
     attributes,
     listeners,
@@ -36,7 +41,23 @@ export const TierRow = memo(function TierRow({ tier, index, onRemove }: TierRowP
         transition,
       }
 
-  const color = getTierColor(index)
+  // Use persisted color, fall back to index-based generation for legacy data
+  const color = tier.color || generateTierColor(index)
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  function commitEdit() {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== tier.label) {
+      onRename(tier.id, trimmed)
+    }
+    setIsEditing(false)
+  }
 
   return (
     <TableRow
@@ -58,12 +79,35 @@ export const TierRow = memo(function TierRow({ tier, index, onRemove }: TierRowP
           {/* Colored line with label */}
           <div className="flex-1 flex items-center gap-2">
             <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
-            <span
-              className="text-[0.8rem] font-bold whitespace-nowrap px-2"
-              style={{ color }}
-            >
-              {`Tier ${index + 1}`}
-            </span>
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitEdit()
+                  if (e.key === "Escape") {
+                    setEditValue(tier.label)
+                    setIsEditing(false)
+                  }
+                }}
+                autoComplete="off"
+                className="text-[0.8rem] font-bold whitespace-nowrap px-1 w-24 bg-transparent border border-border rounded-sm text-center outline-none"
+                style={{ color }}
+              />
+            ) : (
+              <button
+                onClick={() => {
+                  setEditValue(tier.label)
+                  setIsEditing(true)
+                }}
+                className="text-[0.8rem] font-bold whitespace-nowrap px-2 hover:underline"
+                style={{ color }}
+              >
+                {tier.label}
+              </button>
+            )}
             <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
           </div>
 
@@ -82,11 +126,12 @@ export const TierRow = memo(function TierRow({ tier, index, onRemove }: TierRowP
 
 // Overlay rendered during drag — uses div (not tr) since it's outside table context
 interface TierRowOverlayProps {
+  tier: TierSeparator
   index: number
 }
 
-export function TierRowOverlay({ index }: TierRowOverlayProps) {
-  const color = getTierColor(index)
+export function TierRowOverlay({ tier, index }: TierRowOverlayProps) {
+  const color = tier.color || generateTierColor(index)
 
   return (
     <div className="flex items-center gap-2 px-2 h-8 bg-background border border-border rounded-md shadow-lg">
@@ -99,7 +144,7 @@ export function TierRowOverlay({ index }: TierRowOverlayProps) {
           className="text-[0.8rem] font-bold whitespace-nowrap px-2"
           style={{ color }}
         >
-          {`Tier ${index + 1}`}
+          {tier.label}
         </span>
         <div className="flex-1 h-[2.5px]" style={{ backgroundColor: color }} />
       </div>
