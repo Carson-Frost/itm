@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSeasonStats, getAvailableSeasons } from '@/lib/data-access/player-stats'
 import { mapSeasonStatsArrayToPlayers } from '@/lib/data-mappers/player-mapper'
-import { Player } from '@/lib/mock-fantasy-data'
+import { Player } from '@/lib/types/player'
 
 export interface SeasonStatsResponse {
   players: Player[]

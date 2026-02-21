@@ -1,4 +1,4 @@
-import { Player, Position } from '@/lib/mock-fantasy-data'
+import { Player, Position } from '@/lib/types/player'
 import { SeasonStats } from '@/lib/types/mongodb-schemas'
 
 // Maps MongoDB SeasonStats to UI Player interface

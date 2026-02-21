@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PositionBadge } from "@/components/position-badge"
-import { Player, Position } from "@/lib/mock-fantasy-data"
+import { Player, Position } from "@/lib/types/player"
 import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
 import { WeeklyStats as DBWeeklyStats, RosterData, ScheduleData } from "@/lib/types/mongodb-schemas"
@@ -301,7 +301,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
       try {
         // Fetch player weekly stats
         const params = new URLSearchParams({
-          playerId: player.playerId,
+          playerId: player!.playerId,
           season: selectedSeason.toString(),
         })
 
@@ -318,7 +318,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
         if (!playerTeam) {
           // No weekly stats - get team from roster data
           const rosterParams = new URLSearchParams({
-            gsisId: player.playerId,
+            gsisId: player!.playerId,
             season: selectedSeason.toString(),
           })
           const rosterResponse = await fetch(`/api/fantasy/roster-data?${rosterParams}`)
@@ -574,7 +574,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
           : selectedSeason
 
         const params = new URLSearchParams({
-          gsisId: player.playerId,
+          gsisId: player!.playerId,
           season: seasonToFetch.toString(),
         })
 
@@ -604,7 +604,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
     async function fetchAvailableSeasons() {
       try {
         const params = new URLSearchParams({
-          gsisId: player.playerId,
+          gsisId: player!.playerId,
         })
 
         const response = await fetch(`/api/fantasy/roster-data?${params}`)
@@ -639,7 +639,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
         const allSeasonStats = await Promise.all(
           availableSeasons.map(async (season) => {
             const params = new URLSearchParams({
-              playerId: player.playerId,
+              playerId: player!.playerId,
               season: season.year.toString(),
             })
 
@@ -737,7 +737,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
     async function fetchCollege() {
       try {
         const params = new URLSearchParams({
-          playerId: player.playerId,
+          playerId: player!.playerId,
         })
 
         const response = await fetch(`/api/fantasy/weekly-stats?${params}`)
@@ -749,7 +749,7 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
 
             // Fetch roster data for most recent season
             const rosterParams = new URLSearchParams({
-              gsisId: player.playerId,
+              gsisId: player!.playerId,
               season: mostRecentSeason.toString(),
             })
 

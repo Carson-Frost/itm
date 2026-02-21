@@ -48,7 +48,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserRanking, RankedPlayer, TierSeparator, FantasyPosition, DisplayItem } from "@/lib/types/ranking-schemas"
 import { mergeItems, splitItems, getItemId, groupByTiers, bucketsToData, TierBucket, generateTierColor, recalcDefaultNames, backfillTierColors } from "@/lib/tier-utils"
 import { getBucketContainerId } from "./tier-list-view"
-import { Player, Position } from "@/lib/mock-fantasy-data"
+import { Player, Position } from "@/lib/types/player"
 import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
 import { PlayerCard } from "@/app/fantasy/charts/components/player-card"
 import { RankingHeader } from "./ranking-header"
@@ -649,6 +649,36 @@ export function RankingEditor({
     return firstPlayerIdx > 0 ? kept.slice(firstPlayerIdx) : kept
   }, [hasFilters, filteredPlayers, ranking.players, ranking.tiers, searchQuery, filterTeam])
 
+  // Move a specific player up/down via context menu. Temporarily selects the
+  // player so handleMovePlayer can find it, then performs the move.
+  const handleContextMoveUp = useCallback((player: RankedPlayer) => {
+    setSelectedPlayerId(player.playerId)
+    // Need to defer so selectedPlayerId state is set before handleMovePlayer reads it.
+    // Instead, inline the move logic directly using the player's position in displayItems.
+    const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+    const currentIndex = merged.findIndex(
+      (item) => item.type === "player" && item.data.playerId === player.playerId
+    )
+    if (currentIndex <= 0) return
+    const reordered = arrayMove(merged, currentIndex, currentIndex - 1)
+    const { players, tiers } = splitItems(reordered)
+    handlePlayersChangeWithHistory(players)
+    onTiersChange(recalcDefaultNames(tiers))
+  }, [ranking.players, ranking.tiers, handlePlayersChangeWithHistory, onTiersChange])
+
+  const handleContextMoveDown = useCallback((player: RankedPlayer) => {
+    setSelectedPlayerId(player.playerId)
+    const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+    const currentIndex = merged.findIndex(
+      (item) => item.type === "player" && item.data.playerId === player.playerId
+    )
+    if (currentIndex === -1 || currentIndex >= merged.length - 1) return
+    const reordered = arrayMove(merged, currentIndex, currentIndex + 1)
+    const { players, tiers } = splitItems(reordered)
+    handlePlayersChangeWithHistory(players)
+    onTiersChange(recalcDefaultNames(tiers))
+  }, [ranking.players, ranking.tiers, handlePlayersChangeWithHistory, onTiersChange])
+
   // Move player up/down in the display list. Operates on the merged list
   // (players + tier separators) so tiers are treated as items that can be
   // stepped over — moving past a tier boundary shifts the separator rather
@@ -718,7 +748,7 @@ export function RankingEditor({
   const virtualizer = useVirtualizer({
     count: displayItems.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => displayItems[index]?.type === "tier" ? 32 : 49,
+    estimateSize: (index) => displayItems[index]?.type === "tier" ? 28 : 49,
     overscan: 10,
   })
   const virtualRows = virtualizer.getVirtualItems()
@@ -758,7 +788,7 @@ export function RankingEditor({
 
   // Dismiss toast on unmount
   useEffect(() => {
-    return () => toast.dismiss(placingTierToastId)
+    return () => { toast.dismiss(placingTierToastId) }
   }, [])
 
   // Place a tier above the selected player.
@@ -1017,6 +1047,9 @@ export function RankingEditor({
             onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
             onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
             onTierRename={handleTierRename}
+            onTierRemove={setRemoveTierTarget}
+            onMoveUp={handleContextMoveUp}
+            onMoveDown={handleContextMoveDown}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"
@@ -1035,7 +1068,6 @@ export function RankingEditor({
                 <TableHeader className="sticky top-0 z-10 bg-muted">
                   {/* Row 1: Group headers */}
                   <TableRow>
-                    <TableHead className="w-8"></TableHead>
                     <TableHead className="w-12"></TableHead>
                     <TableHead colSpan={3} className="text-center text-xs font-semibold">
                       PLAYER
@@ -1068,7 +1100,6 @@ export function RankingEditor({
                   </TableRow>
                   {/* Row 2: Specific column headers */}
                   <TableRow>
-                    <TableHead className="w-8"></TableHead>
                     <TableHead className="text-center w-12 font-medium">RK</TableHead>
                     <TableHead className="text-center w-48 font-medium">NAME</TableHead>
                     <TableHead className="text-center w-16 font-medium">POS</TableHead>
@@ -1114,6 +1145,7 @@ export function RankingEditor({
                         )
                       }
                       const player = item.data
+                      const playerDisplayIndex = virtualRow.index
                       return (
                         <PlayerRow
                           key={player.playerId}
@@ -1124,6 +1156,10 @@ export function RankingEditor({
                           isPlacingTier={isPlacingTier}
                           onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
                           onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+                          onMoveUp={handleContextMoveUp}
+                          onMoveDown={handleContextMoveDown}
+                          canMoveUp={playerDisplayIndex > 0}
+                          canMoveDown={playerDisplayIndex < displayItems.length - 1}
                         />
                       )
                     })}
@@ -1152,6 +1188,7 @@ export function RankingEditor({
               player={activeItem.data}
               stats={playerStats[activeItem.data.playerId]}
               columnGroups={columnGroups}
+              containerWidth={scrollRef.current?.offsetWidth}
             />
           ) : null}
         </DragOverlay>
