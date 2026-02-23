@@ -10,13 +10,10 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { RankedPlayer, FantasyPosition } from "@/lib/types/ranking-schemas"
-import { PositionBadge } from "@/components/position-badge"
 import { PlayerContextMenuItems, PlayerStats } from "./player-row"
 import { cn } from "@/lib/utils"
 import { useSelectionBox } from "@/hooks/use-selection-box"
 
-// Position rank computation: for each player, count how many of the same position
-// are ranked above them. Returns a map of playerId -> position rank string (e.g. "QB3")
 function computePositionRanks(players: RankedPlayer[]): Map<string, string> {
   const map = new Map<string, string>()
   const counts: Record<string, number> = {}
@@ -27,7 +24,13 @@ function computePositionRanks(players: RankedPlayer[]): Map<string, string> {
   return map
 }
 
-// Trend arrow based on comparing current rank to ADP position
+const positionColors: Record<string, string> = {
+  QB: "text-red-500 dark:text-red-400",
+  RB: "text-emerald-500 dark:text-emerald-400",
+  WR: "text-sky-500 dark:text-sky-400",
+  TE: "text-orange-500 dark:text-orange-400",
+}
+
 function TrendArrow({ diff }: { diff: number }) {
   if (diff === 0) return null
   if (diff >= 10) return <ChevronsUp className="h-3.5 w-3.5 text-green-500" />
@@ -49,7 +52,6 @@ interface StatGroup {
   columns: { key: string; label: string }[]
 }
 
-// Get stat groups for the card based on player position
 function getStatGroups(position: FantasyPosition): StatGroup[] {
   switch (position) {
     case "QB":
@@ -134,8 +136,35 @@ function getStatGroups(position: FantasyPosition): StatGroup[] {
   }
 }
 
-// Stable reference to avoid re-creating on every render
 const noAnimations = () => false
+
+// Vertical divider between sections
+function Divider() {
+  return <div className="w-px self-stretch bg-border shrink-0" />
+}
+
+// Stat section: group label on top, stat columns below with value/label
+function StatSection({ group, stats }: { group: StatGroup; stats?: PlayerStats }) {
+  return (
+    <div className="flex flex-col justify-center gap-0.5 shrink-0">
+      <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">
+        {group.label}
+      </div>
+      <div className="flex gap-2.5">
+        {group.columns.map((col) => (
+          <div key={col.key} className="text-center min-w-[24px]">
+            <div className="text-xs font-bold leading-none">
+              {getStatValue(stats, col.key)}
+            </div>
+            <div className="text-[9px] text-muted-foreground leading-tight">
+              {col.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 interface CardItemProps {
   player: RankedPlayer
@@ -198,7 +227,7 @@ const CardItem = memo(function CardItem({
           data-player-card={player.playerId}
           style={style}
           className={cn(
-            "group flex gap-0 border bg-card touch-none overflow-hidden",
+            "group flex items-center gap-2.5 border-b bg-card touch-none h-[56px] px-2",
             isSelected && "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)]",
             isDragging && "opacity-0",
             isPlacingTier ? "cursor-cell" : "cursor-grab active:cursor-grabbing"
@@ -206,8 +235,18 @@ const CardItem = memo(function CardItem({
           onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
           {...(!isPlacingTier ? { ...attributes, ...listeners } : {})}
         >
-          {/* Left: Headshot */}
-          <div className="relative shrink-0 w-[80px]">
+          {/* Drag handle */}
+          <div className="shrink-0 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity">
+            <GripVertical className="h-4 w-4" />
+          </div>
+
+          {/* Rank */}
+          <div className="shrink-0 w-[28px] text-center font-bold text-sm text-muted-foreground">
+            {player.rank}
+          </div>
+
+          {/* Headshot */}
+          <div className="shrink-0 w-[40px] h-[40px] overflow-hidden bg-muted">
             {player.headshotUrl ? (
               <img
                 src={player.headshotUrl}
@@ -217,87 +256,85 @@ const CardItem = memo(function CardItem({
             ) : (
               <div className="w-full h-full bg-muted" />
             )}
-            {/* Rank badge — bottom-left */}
-            <div className="absolute bottom-0 left-0 bg-black/70 text-white text-[11px] font-bold px-1.5 py-0.5">
-              #{player.rank}
-            </div>
-            {/* Drag handle */}
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 text-white/60 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
-              <GripVertical className="h-4 w-4" />
+          </div>
+
+          {/* Name block */}
+          <div className="shrink-0 w-[140px] min-w-0 flex flex-col justify-center">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onClick(player)
+              }}
+              className="font-bold text-sm uppercase truncate hover:underline text-left leading-tight"
+            >
+              {player.name}
+            </button>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={cn(
+                "text-[11px] font-semibold",
+                positionColors[player.position] || "text-muted-foreground"
+              )}>
+                {player.position}
+              </span>
+              <span className="text-[11px] text-muted-foreground">{player.team || "FA"}</span>
             </div>
           </div>
 
-          {/* Right: Info */}
-          <div className="flex-1 min-w-0 px-3 py-2 flex flex-col justify-between gap-1.5">
-            {/* Top: Name + Position + Team + Trend */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onClick(player)
-                }}
-                className="font-semibold truncate hover:underline text-sm leading-tight"
-              >
-                {player.name}
-              </button>
-              <PositionBadge position={player.position} />
-              <span className="text-xs text-muted-foreground">{player.team || "FA"}</span>
-              <span className="text-xs font-bold text-foreground">{positionRank}</span>
-              {adpRank && trendDiff !== 0 && (
-                <span className="flex items-center gap-0.5">
-                  <TrendArrow diff={trendDiff} />
-                  <span className={cn(
-                    "text-[11px] font-medium",
-                    trendDiff > 0 ? "text-green-500" : "text-destructive"
-                  )}>
-                    {trendDiff > 0 ? "+" : ""}{trendDiff}
-                  </span>
+          <Divider />
+
+          {/* Position rank */}
+          <div className="shrink-0 w-[44px] flex items-center justify-center">
+            <span className={cn(
+              "text-base font-extrabold leading-none",
+              positionColors[player.position] || "text-muted-foreground"
+            )}>
+              {positionRank}
+            </span>
+          </div>
+
+          <Divider />
+
+          {/* Fantasy points */}
+          <div className="shrink-0 flex flex-col justify-center gap-0.5 w-[80px]">
+            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">
+              FPTS
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-bold leading-none">
+                {stats?.fantasyPoints?.toFixed(1) ?? "-"}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {stats?.pointsPerGame?.toFixed(1) ?? "-"}/g
+              </span>
+            </div>
+            <div className="text-[9px] text-muted-foreground leading-none">
+              {stats?.gamesPlayed ?? "-"}G
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Stat groups */}
+          {groups.map((group, i) => (
+            <div key={group.label} className="contents">
+              <StatSection group={group} stats={stats} />
+              {i < groups.length - 1 && <Divider />}
+            </div>
+          ))}
+
+          {/* ADP trend — pushed to far right */}
+          <div className="ml-auto shrink-0 w-[48px] flex items-center justify-end gap-0.5">
+            {adpRank && trendDiff !== 0 ? (
+              <>
+                <TrendArrow diff={trendDiff} />
+                <span className={cn(
+                  "text-[11px] font-semibold",
+                  trendDiff > 0 ? "text-green-500" : "text-destructive"
+                )}>
+                  {trendDiff > 0 ? "+" : ""}{trendDiff}
                 </span>
-              )}
-            </div>
-
-            {/* Stats: Fantasy + position groups, all in one row */}
-            <div className="flex items-end gap-3 text-xs">
-              {/* Fantasy points */}
-              <div className="shrink-0">
-                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">FPTS</div>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="text-base font-bold leading-none">
-                    {stats?.fantasyPoints?.toFixed(1) ?? "-"}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {stats?.pointsPerGame?.toFixed(1) ?? "-"}/g
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {stats?.gamesPlayed ?? "-"}G
-                  </span>
-                </div>
-              </div>
-
-              {/* Stat groups */}
-              {groups.map((group) => (
-                <div key={group.label} className="flex-none">
-                  <div className="flex items-center gap-0.5">
-                    <div className="w-px h-6 bg-border mr-1.5" />
-                    <div>
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</div>
-                      <div className="flex gap-2 mt-0.5">
-                        {group.columns.map((col) => (
-                          <div key={col.key} className="text-center">
-                            <div className="text-sm font-semibold leading-none">
-                              {getStatValue(stats, col.key)}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground leading-tight">
-                              {col.label}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+              </>
+            ) : null}
           </div>
         </div>
       </ContextMenuTrigger>
@@ -331,52 +368,72 @@ export function CardItemOverlay({
   const groups = getStatGroups(player.position)
 
   return (
-    <div className="flex gap-0 border bg-card shadow-lg overflow-hidden">
-      <div className="relative shrink-0 w-[80px] h-[76px]">
+    <div className="flex items-center gap-2.5 border bg-card shadow-lg h-[56px] px-2">
+      {/* Drag handle placeholder */}
+      <div className="shrink-0 text-muted-foreground/40">
+        <GripVertical className="h-4 w-4" />
+      </div>
+
+      {/* Rank */}
+      <div className="shrink-0 w-[28px] text-center font-bold text-sm text-muted-foreground">
+        {player.rank}
+      </div>
+
+      {/* Headshot */}
+      <div className="shrink-0 w-[40px] h-[40px] overflow-hidden bg-muted">
         {player.headshotUrl ? (
           <img src={player.headshotUrl} alt="" className="w-full h-full object-cover object-top" />
         ) : (
           <div className="w-full h-full bg-muted" />
         )}
-        <div className="absolute bottom-0 left-0 bg-black/70 text-white text-[11px] font-bold px-1.5 py-0.5">
-          #{player.rank}
+      </div>
+
+      {/* Name block */}
+      <div className="shrink-0 w-[140px] min-w-0 flex flex-col justify-center">
+        <span className="font-bold text-sm uppercase truncate leading-tight">{player.name}</span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className={cn(
+            "text-[11px] font-semibold",
+            positionColors[player.position] || "text-muted-foreground"
+          )}>
+            {player.position}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{player.team || "FA"}</span>
         </div>
       </div>
-      <div className="flex-1 min-w-0 px-3 py-2 flex flex-col justify-between gap-1.5">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm truncate">{player.name}</span>
-          <PositionBadge position={player.position} />
-          <span className="text-xs text-muted-foreground">{player.team || "FA"}</span>
-          <span className="text-xs font-bold text-foreground">{positionRank}</span>
-        </div>
-        <div className="flex items-end gap-3 text-xs">
-          <div className="shrink-0">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">FPTS</div>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-base font-bold leading-none">{stats?.fantasyPoints?.toFixed(1) ?? "-"}</span>
-              <span className="text-[11px] text-muted-foreground">{stats?.pointsPerGame?.toFixed(1) ?? "-"}/g</span>
-            </div>
-          </div>
-          {groups.map((group) => (
-            <div key={group.label} className="flex-none">
-              <div className="flex items-center gap-0.5">
-                <div className="w-px h-6 bg-border mr-1.5" />
-                <div>
-                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</div>
-                  <div className="flex gap-2 mt-0.5">
-                    {group.columns.map((col) => (
-                      <div key={col.key} className="text-center">
-                        <div className="text-sm font-semibold leading-none">{getStatValue(stats, col.key)}</div>
-                        <div className="text-[10px] text-muted-foreground leading-tight">{col.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+
+      <Divider />
+
+      {/* Position rank */}
+      <div className="shrink-0 w-[44px] flex items-center justify-center">
+        <span className={cn(
+          "text-base font-extrabold leading-none",
+          positionColors[player.position] || "text-muted-foreground"
+        )}>
+          {positionRank}
+        </span>
+      </div>
+
+      <Divider />
+
+      {/* Fantasy points */}
+      <div className="shrink-0 flex flex-col justify-center gap-0.5 w-[80px]">
+        <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">FPTS</div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-bold leading-none">{stats?.fantasyPoints?.toFixed(1) ?? "-"}</span>
+          <span className="text-[10px] text-muted-foreground">{stats?.pointsPerGame?.toFixed(1) ?? "-"}/g</span>
         </div>
       </div>
+
+      <Divider />
+
+      {/* Stat groups */}
+      {groups.map((group, i) => (
+        <div key={group.label} className="contents">
+          <StatSection group={group} stats={stats} />
+          {i < groups.length - 1 && <Divider />}
+        </div>
+      ))}
     </div>
   )
 }
@@ -450,7 +507,7 @@ export function CardView({
         <div ref={selectionBoxRef} style={selectionBoxStyle} />
       )}
       <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-0">
+        <div className="flex flex-col">
           {players.map((player, index) => (
             <CardItem
               key={player.playerId}
