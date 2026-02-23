@@ -1,9 +1,6 @@
 "use client"
 
-import { memo, useMemo, useState, useRef, useEffect } from "react"
-import { useDroppable } from "@dnd-kit/core"
-import { useSortable, SortableContext, rectSortingStrategy } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
+import { memo, useState, useRef, useEffect } from "react"
 import { GripVertical } from "lucide-react"
 import { RankedPlayer, TierSeparator } from "@/lib/types/ranking-schemas"
 import { TierBucket } from "@/lib/tier-utils"
@@ -16,8 +13,6 @@ import {
 import { PlayerContextMenuItems } from "./player-row"
 import { TierContextMenuItems } from "./tier-row"
 import { cn } from "@/lib/utils"
-
-const noAnimations = () => false
 
 const CARD_CHAMFER_OUTER = "polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px)"
 const CARD_CHAMFER_INNER = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)"
@@ -76,7 +71,7 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
   )
 })
 
-// ---------- Card props shared by both sortable and static versions ----------
+// ---------- Card ----------
 
 interface TierPlayerCardProps {
   player: RankedPlayer
@@ -91,79 +86,7 @@ interface TierPlayerCardProps {
   canMoveDown?: boolean
 }
 
-// ---------- Sortable card: used in visible tiers ----------
-
-const SortableTierPlayerCard = memo(function SortableTierPlayerCard({
-  player,
-  isPlacingTier,
-  isSelected,
-  onClick,
-  onSelect,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
-  canMoveUp,
-  canMoveDown,
-}: TierPlayerCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: player.playerId,
-    disabled: isPlacingTier,
-    animateLayoutChanges: noAnimations,
-  })
-
-  const style = isDragging
-    ? undefined
-    : {
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          ref={setNodeRef}
-          data-player-card={player.playerId}
-          style={style}
-          className={cn(
-            "card-chamfer w-[130px] h-[110px] m-1.5 touch-none",
-            isDragging && "opacity-30",
-            isSelected && "card-selected",
-            isPlacingTier ? "cursor-cell" : "cursor-grab active:cursor-grabbing"
-          )}
-          onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
-          {...(!isPlacingTier ? { ...attributes, ...listeners } : {})}
-        >
-          <TierPlayerCardContent player={player} onClick={onClick} />
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <PlayerContextMenuItems
-          player={player}
-          isSelected={isSelected}
-          canMoveUp={!!canMoveUp}
-          canMoveDown={!!canMoveDown}
-          onClick={onClick}
-          onSelect={onSelect}
-          onMoveUp={onMoveUp}
-          onMoveDown={onMoveDown}
-          onRemove={onRemove}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
-  )
-})
-
-// ---------- Static card: used in off-screen tiers (no dnd-kit hooks) ----------
-
-const StaticTierPlayerCard = memo(function StaticTierPlayerCard({
+const TierPlayerCard = memo(function TierPlayerCard({
   player,
   isPlacingTier,
   isSelected,
@@ -181,7 +104,7 @@ const StaticTierPlayerCard = memo(function StaticTierPlayerCard({
         <div
           data-player-card={player.playerId}
           className={cn(
-            "card-chamfer w-[130px] h-[110px] m-1.5 touch-none",
+            "card-chamfer w-[130px] h-[110px] touch-none",
             isSelected && "card-selected",
             isPlacingTier ? "cursor-cell" : "cursor-grab"
           )}
@@ -207,7 +130,7 @@ const StaticTierPlayerCard = memo(function StaticTierPlayerCard({
   )
 })
 
-// ---------- Overlay ----------
+// ---------- Overlay (kept for DragOverlay compatibility) ----------
 
 export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
   return (
@@ -259,34 +182,254 @@ export function getBucketContainerId(bucket: TierBucket): string {
   return bucket.tierIndex !== null ? `tier-bucket-${bucket.tierIndex}` : "tier-bucket-untiered"
 }
 
-// Hook: track whether element is in/near the scrollable viewport
-function useInView(scrollRoot: React.RefObject<HTMLElement | null>) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [isInView, setIsInView] = useState(false)
+const DRAG_THRESHOLD = 3
+const CELL_W = 130
+const CELL_H = 110
+const GAP = 6
+const PAD_X = 6
+const PAD_Y = 4
+
+// Compute which card slot the cursor is over within a tier container
+function computeInsertIndex(
+  container: HTMLElement,
+  cursorX: number,
+  cursorY: number,
+  cardCount: number,
+): number {
+  const rect = container.getBoundingClientRect()
+  const contentWidth = container.clientWidth - PAD_X * 2
+  const cols = Math.max(1, Math.floor((contentWidth + GAP) / (CELL_W + GAP)))
+
+  const relX = cursorX - rect.left - PAD_X
+  const relY = cursorY - rect.top - PAD_Y
+
+  const col = Math.floor((relX + GAP / 2) / (CELL_W + GAP))
+  const row = Math.floor((relY + GAP / 2) / (CELL_H + GAP))
+
+  const clampedCol = Math.max(0, Math.min(col, cols - 1))
+  const clampedRow = Math.max(0, row)
+
+  const index = clampedRow * cols + clampedCol
+  return Math.max(0, Math.min(index, cardCount))
+}
+
+// ---------- Custom tier drag ----------
+// Handles the entire drag lifecycle with pure DOM. Zero dnd-kit hooks.
+// On pointerdown: clone card, follow cursor.
+// After 3px movement: remove card from source tier, show placeholder at cursor position.
+// On pointermove: update placeholder position as cursor moves between tiers/slots.
+// On pointerup: commit the reorder.
+
+interface InsertPos {
+  containerId: string
+  index: number
+}
+
+function useTierDrag(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  buckets: TierBucket[],
+  isPlacingTier: boolean,
+  onReorder: (buckets: TierBucket[]) => void,
+) {
+  const cloneRef = useRef<HTMLElement | null>(null)
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const startPosRef = useRef({ x: 0, y: 0 })
+  const dragActiveRef = useRef(false)
+  const playerIdRef = useRef<string | null>(null)
+  const draggedPlayerRef = useRef<RankedPlayer | null>(null)
+  const insertPosRef = useRef<InsertPos | null>(null)
+
+  // React state — only set when drag activates or insertion changes
+  const [activePlayerId, setActivePlayerId] = useState<string | null>(null)
+  const [baseBuckets, setBaseBuckets] = useState<TierBucket[] | null>(null)
+  const [insertPos, setInsertPos] = useState<InsertPos | null>(null)
+
+  // Stable refs for event handlers
+  const bucketsRef = useRef(buckets)
+  bucketsRef.current = buckets
+  const onReorderRef = useRef(onReorder)
+  onReorderRef.current = onReorder
 
   useEffect(() => {
-    const el = ref.current
-    const root = scrollRoot.current
-    if (!el || !root) return
+    const container = scrollRef.current
+    if (!container || isPlacingTier) return
 
-    // Synchronous initial check — avoids all tiers starting as "visible"
-    const rootRect = root.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    const buffer = 50
-    const initiallyVisible =
-      elRect.bottom >= rootRect.top - buffer &&
-      elRect.top <= rootRect.bottom + buffer
-    setIsInView(initiallyVisible)
+    function onPointerDown(e: PointerEvent) {
+      if (e.button !== 0) return
+      const card = (e.target as HTMLElement).closest?.("[data-player-card]") as HTMLElement | null
+      if (!card) return
 
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsInView(entry.isIntersecting),
-      { root, rootMargin: "50px 0px" }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [scrollRoot])
+      const playerId = card.getAttribute("data-player-card")
+      if (!playerId) return
 
-  return { ref, isInView }
+      e.preventDefault()
+
+      const rect = card.getBoundingClientRect()
+      offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      startPosRef.current = { x: e.clientX, y: e.clientY }
+      playerIdRef.current = playerId
+      dragActiveRef.current = false
+
+      // Create clone immediately for instant visual feedback
+      const clone = card.cloneNode(true) as HTMLElement
+      clone.style.position = "fixed"
+      clone.style.left = `${rect.left}px`
+      clone.style.top = `${rect.top}px`
+      clone.style.width = `${rect.width}px`
+      clone.style.height = `${rect.height}px`
+      clone.style.zIndex = "10000"
+      clone.style.pointerEvents = "none"
+      clone.style.willChange = "transform"
+      clone.style.transition = "none"
+      document.body.appendChild(clone)
+      cloneRef.current = clone
+    }
+
+    function activateDrag() {
+      const playerId = playerIdRef.current
+      if (!playerId) return
+
+      // Hide source card via DOM immediately
+      const sourceCard = document.querySelector(`[data-player-card="${playerId}"]`) as HTMLElement | null
+      if (sourceCard) sourceCard.style.opacity = "0"
+
+      // Find and extract the dragged player from buckets
+      const current = bucketsRef.current
+      let draggedPlayer: RankedPlayer | null = null
+      const newBuckets = current.map(b => {
+        const idx = b.players.findIndex(p => p.playerId === playerId)
+        if (idx !== -1) {
+          draggedPlayer = b.players[idx]
+          return { ...b, players: b.players.filter(p => p.playerId !== playerId) }
+        }
+        return b
+      })
+
+      if (!draggedPlayer) return
+
+      dragActiveRef.current = true
+      draggedPlayerRef.current = draggedPlayer
+      setActivePlayerId(playerId)
+      setBaseBuckets(newBuckets)
+    }
+
+    function onPointerMove(e: PointerEvent) {
+      if (!playerIdRef.current) return
+
+      // Move clone
+      const clone = cloneRef.current
+      if (clone) {
+        clone.style.left = `${e.clientX - offsetRef.current.x}px`
+        clone.style.top = `${e.clientY - offsetRef.current.y}px`
+      }
+
+      // Check activation threshold
+      if (!dragActiveRef.current) {
+        const dx = e.clientX - startPosRef.current.x
+        const dy = e.clientY - startPosRef.current.y
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+        activateDrag()
+        return
+      }
+
+      // Find which tier container the cursor is over
+      const el = document.elementFromPoint(e.clientX, e.clientY)
+      const tierContainer = el?.closest("[data-tier-container]") as HTMLElement | null
+      if (!tierContainer) return
+
+      const containerId = tierContainer.getAttribute("data-tier-container")!
+
+      // Count current cards in this container (excluding placeholder)
+      const cards = tierContainer.querySelectorAll("[data-player-card]")
+      const cardCount = cards.length
+
+      const index = computeInsertIndex(tierContainer, e.clientX, e.clientY, cardCount)
+
+      // Only update React state if position actually changed
+      const prev = insertPosRef.current
+      if (prev && prev.containerId === containerId && prev.index === index) return
+
+      const newPos = { containerId, index }
+      insertPosRef.current = newPos
+      setInsertPos(newPos)
+    }
+
+    function onPointerUp() {
+      if (dragActiveRef.current && draggedPlayerRef.current && insertPosRef.current) {
+        // Commit: insert dragged player into baseBuckets at insertPos
+        const base = bucketsRef.current
+        const player = draggedPlayerRef.current
+        const { containerId, index } = insertPosRef.current
+
+        // Start from original buckets, remove player, insert at new position
+        let draggedFromBuckets: RankedPlayer | null = null
+        const result = base.map(b => {
+          const idx = b.players.findIndex(p => p.playerId === player.playerId)
+          if (idx !== -1) {
+            draggedFromBuckets = b.players[idx]
+            return { ...b, players: b.players.filter(p => p.playerId !== player.playerId) }
+          }
+          return b
+        })
+
+        const targetBucket = result.find(b => getBucketContainerId(b) === containerId)
+        if (targetBucket && (draggedFromBuckets || player)) {
+          const insertPlayer = draggedFromBuckets || player
+          const newPlayers = [...targetBucket.players]
+          newPlayers.splice(index, 0, insertPlayer)
+          const finalBuckets = result.map(b =>
+            getBucketContainerId(b) === containerId ? { ...b, players: newPlayers } : b
+          )
+          onReorderRef.current(finalBuckets)
+        }
+      }
+
+      cleanup()
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && playerIdRef.current) {
+        cleanup()
+      }
+    }
+
+    function cleanup() {
+      if (cloneRef.current) {
+        cloneRef.current.remove()
+        cloneRef.current = null
+      }
+      // Restore any dimmed source card
+      if (playerIdRef.current) {
+        const src = document.querySelector(`[data-player-card="${playerIdRef.current}"]`) as HTMLElement | null
+        if (src) src.style.opacity = ""
+      }
+      playerIdRef.current = null
+      dragActiveRef.current = false
+      draggedPlayerRef.current = null
+      insertPosRef.current = null
+      setActivePlayerId(null)
+      setBaseBuckets(null)
+      setInsertPos(null)
+    }
+
+    container.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("keydown", onKeyDown)
+
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("keydown", onKeyDown)
+      cleanup()
+    }
+  }, [scrollRef, isPlacingTier])
+
+  // The buckets to render: baseBuckets (with player removed) during drag, original otherwise
+  const activeBuckets = baseBuckets ?? buckets
+
+  return { activeBuckets, activePlayerId, insertPos }
 }
 
 // ---------- Tier row ----------
@@ -296,8 +439,8 @@ interface TierListRowProps {
   containerId: string
   isPlacingTier: boolean
   selectedPlayerIds: Set<string>
-  sortableTierIds: Set<string>
-  isInView: boolean
+  activePlayerId: string | null
+  insertPos: InsertPos | null
   onPlayerClick: (player: RankedPlayer) => void
   onPlayerSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onTierRename?: (tierId: string, newLabel: string) => void
@@ -314,8 +457,8 @@ const TierListRow = memo(function TierListRow({
   containerId,
   isPlacingTier,
   selectedPlayerIds,
-  sortableTierIds,
-  isInView,
+  activePlayerId,
+  insertPos,
   onPlayerClick,
   onPlayerSelect,
   onTierRename,
@@ -326,16 +469,10 @@ const TierListRow = memo(function TierListRow({
   playerCount,
   startIndex,
 }: TierListRowProps) {
-  const { setNodeRef: setDropRef } = useDroppable({ id: containerId })
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(bucket.label)
   const inputRef = useRef<HTMLInputElement>(null)
   const renamingFromMenu = useRef(false)
-
-  const sortableIds = useMemo(
-    () => bucket.players.map((p) => p.playerId),
-    [bucket.players]
-  )
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -359,9 +496,7 @@ const TierListRow = memo(function TierListRow({
   }
 
   const hasTier = !!bucket.tierId
-  // Sortable only if in-view AND (no drag active OR this tier is in the sortable set)
-  const isSortable = isInView && (sortableTierIds.size === 0 || sortableTierIds.has(containerId))
-  const CardComponent = isSortable ? SortableTierPlayerCard : StaticTierPlayerCard
+  const isInsertTarget = insertPos?.containerId === containerId
 
   const tierLabelContent = (
     <div
@@ -404,24 +539,37 @@ const TierListRow = memo(function TierListRow({
     </div>
   )
 
-  const cardContent = bucket.players.map((player, i) => {
-    const globalIndex = startIndex + i
-    return (
-      <CardComponent
-        key={player.playerId}
-        player={player}
-        isPlacingTier={isPlacingTier}
-        isSelected={selectedPlayerIds.has(player.playerId)}
-        onClick={onPlayerClick}
-        onSelect={onPlayerSelect}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
-        onRemove={onRemovePlayer}
-        canMoveUp={globalIndex > 0}
-        canMoveDown={globalIndex < playerCount - 1}
-      />
-    )
-  })
+  // Build card elements with placeholder insertion
+  const cardElements: React.ReactNode[] = []
+  for (let i = 0; i <= bucket.players.length; i++) {
+    if (isInsertTarget && insertPos.index === i) {
+      cardElements.push(
+        <div
+          key="__placeholder__"
+          className="w-[130px] h-[110px] rounded bg-foreground/5"
+        />
+      )
+    }
+    if (i < bucket.players.length) {
+      const player = bucket.players[i]
+      const globalIndex = startIndex + i
+      cardElements.push(
+        <TierPlayerCard
+          key={player.playerId}
+          player={player}
+          isPlacingTier={isPlacingTier}
+          isSelected={selectedPlayerIds.has(player.playerId)}
+          onClick={onPlayerClick}
+          onSelect={onPlayerSelect}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          onRemove={onRemovePlayer}
+          canMoveUp={globalIndex > 0}
+          canMoveDown={globalIndex < playerCount - 1}
+        />
+      )
+    }
+  }
 
   return (
     <div className="flex border-b last:border-b-0">
@@ -459,151 +607,16 @@ const TierListRow = memo(function TierListRow({
         </ContextMenu>
       ) : tierLabelContent}
 
-      {isSortable ? (
-        <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
-          <div
-            ref={setDropRef}
-            data-tier-container={containerId}
-            className="flex-1 flex flex-wrap py-1 px-0.5 min-h-[126px]"
-            style={{ contain: "layout style" }}
-          >
-            {cardContent}
-          </div>
-        </SortableContext>
-      ) : (
-        <div
-          ref={setDropRef}
-          data-tier-container={containerId}
-          className="flex-1 flex flex-wrap py-1 px-0.5 min-h-[126px]"
-          style={{ contain: "layout style" }}
-        >
-          {cardContent}
-        </div>
-      )}
+      <div
+        data-tier-container={containerId}
+        className="flex-1 grid grid-cols-[repeat(auto-fill,130px)] auto-rows-[110px] gap-1.5 py-1 px-1.5 min-h-[126px] content-start"
+        style={{ contain: "layout style" }}
+      >
+        {cardElements}
+      </div>
     </div>
   )
 })
-
-// ---------- Optimistic grab overlay ----------
-// Shows a DOM clone of the card instantly on pointerdown, before dnd-kit activates.
-// Pure DOM manipulation — zero React renders — so it feels instant.
-
-function useOptimisticGrab(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-  isPlacingTier: boolean,
-  activeId: string | null,
-  onGrab?: (playerId: string) => void,
-) {
-  const cloneRef = useRef<HTMLElement | null>(null)
-  const sourcePlayerIdRef = useRef<string | null>(null)
-  const offsetRef = useRef({ x: 0, y: 0 })
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const onGrabRef = useRef(onGrab)
-  onGrabRef.current = onGrab
-
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container || isPlacingTier) return
-
-    function onPointerDown(e: PointerEvent) {
-      if (e.button !== 0) return
-      const card = (e.target as HTMLElement).closest?.("[data-player-card]") as HTMLElement | null
-      if (!card) return
-
-      const playerId = card.getAttribute("data-player-card")
-      if (!playerId) return
-
-      const rect = card.getBoundingClientRect()
-      offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-
-      const clone = card.cloneNode(true) as HTMLElement
-      clone.style.position = "fixed"
-      clone.style.left = `${rect.left}px`
-      clone.style.top = `${rect.top}px`
-      clone.style.width = `${rect.width}px`
-      clone.style.height = `${rect.height}px`
-      clone.style.zIndex = "10000"
-      clone.style.pointerEvents = "none"
-      clone.style.willChange = "transform"
-      clone.style.transition = "none"
-      clone.id = "optimistic-grab-clone"
-      document.body.appendChild(clone)
-
-      cloneRef.current = clone
-      sourcePlayerIdRef.current = playerId
-      card.style.opacity = "0.3"
-
-      // Only pre-warm after 50ms hold — avoids wasted work on quick clicks
-      holdTimerRef.current = setTimeout(() => {
-        onGrabRef.current?.(playerId)
-        holdTimerRef.current = null
-      }, 50)
-    }
-
-    function onPointerMove(e: PointerEvent) {
-      const clone = cloneRef.current
-      if (!clone) return
-      clone.style.left = `${e.clientX - offsetRef.current.x}px`
-      clone.style.top = `${e.clientY - offsetRef.current.y}px`
-    }
-
-    function cleanup() {
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current)
-        holdTimerRef.current = null
-      }
-      if (cloneRef.current) {
-        cloneRef.current.remove()
-        cloneRef.current = null
-      }
-      if (sourcePlayerIdRef.current) {
-        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
-        if (src) src.style.opacity = ""
-        sourcePlayerIdRef.current = null
-      }
-    }
-
-    function onPointerUp() {
-      cleanup()
-    }
-
-    container.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("pointermove", onPointerMove)
-    window.addEventListener("pointerup", onPointerUp)
-
-    return () => {
-      container.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("pointermove", onPointerMove)
-      window.removeEventListener("pointerup", onPointerUp)
-      cleanup()
-    }
-  }, [scrollRef, isPlacingTier])
-
-  // When dnd-kit activates, remove clone immediately — DragOverlay takes over
-  useEffect(() => {
-    if (activeId && cloneRef.current) {
-      cloneRef.current.remove()
-      cloneRef.current = null
-      if (sourcePlayerIdRef.current) {
-        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
-        if (src) src.style.opacity = ""
-        sourcePlayerIdRef.current = null
-      }
-    }
-    // When drag ends, ensure cleanup
-    if (!activeId) {
-      if (cloneRef.current) {
-        cloneRef.current.remove()
-        cloneRef.current = null
-      }
-      if (sourcePlayerIdRef.current) {
-        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
-        if (src) src.style.opacity = ""
-        sourcePlayerIdRef.current = null
-      }
-    }
-  }, [activeId])
-}
 
 // ---------- TierListView ----------
 
@@ -611,8 +624,6 @@ interface TierListViewProps {
   buckets: TierBucket[]
   isPlacingTier: boolean
   selectedPlayerIds: Set<string>
-  activeId: string | null
-  sortableTierIds: Set<string>
   onPlayerClick: (player: RankedPlayer) => void
   onPlayerSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onTierRename: (tierId: string, newLabel: string) => void
@@ -620,7 +631,7 @@ interface TierListViewProps {
   onMoveUp: (player: RankedPlayer) => void
   onMoveDown: (player: RankedPlayer) => void
   onRemovePlayer?: (player: RankedPlayer) => void
-  onGrab?: (playerId: string) => void
+  onReorder: (buckets: TierBucket[]) => void
   className?: string
 }
 
@@ -628,8 +639,6 @@ export function TierListView({
   buckets,
   isPlacingTier,
   selectedPlayerIds,
-  activeId,
-  sortableTierIds,
   onPlayerClick,
   onPlayerSelect,
   onTierRename,
@@ -637,13 +646,18 @@ export function TierListView({
   onMoveUp,
   onMoveDown,
   onRemovePlayer,
-  onGrab,
+  onReorder,
   className,
 }: TierListViewProps) {
-  const totalPlayers = buckets.reduce((sum, b) => sum + b.players.length, 0)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { activeBuckets, activePlayerId, insertPos } = useTierDrag(
+    scrollRef,
+    buckets,
+    isPlacingTier,
+    onReorder,
+  )
 
-  useOptimisticGrab(scrollRef, isPlacingTier, activeId, onGrab)
+  const totalPlayers = activeBuckets.reduce((sum, b) => sum + b.players.length, 0)
 
   let runningIndex = 0
   return (
@@ -651,19 +665,19 @@ export function TierListView({
       ref={scrollRef}
       className={cn("border rounded-md overflow-auto max-h-[calc(100vh-320px)] bg-card", className)}
     >
-      {buckets.map((bucket, i) => {
+      {activeBuckets.map((bucket, i) => {
         const containerId = getBucketContainerId(bucket)
         const bucketStartIndex = runningIndex
         runningIndex += bucket.players.length
         return (
-          <TierListRowWithVisibility
+          <TierListRow
             key={bucket.tierIndex ?? `untiered-${i}`}
-            scrollRef={scrollRef}
             bucket={bucket}
             containerId={containerId}
             isPlacingTier={isPlacingTier}
             selectedPlayerIds={selectedPlayerIds}
-            sortableTierIds={sortableTierIds}
+            activePlayerId={activePlayerId}
+            insertPos={insertPos}
             onPlayerClick={onPlayerClick}
             onPlayerSelect={onPlayerSelect}
             onTierRename={onTierRename}
@@ -676,20 +690,6 @@ export function TierListView({
           />
         )
       })}
-    </div>
-  )
-}
-
-// Wrapper that tracks visibility and passes isInView to TierListRow
-function TierListRowWithVisibility({
-  scrollRef,
-  ...props
-}: Omit<TierListRowProps, "isInView"> & { scrollRef: React.RefObject<HTMLDivElement | null> }) {
-  const { ref, isInView } = useInView(scrollRef)
-
-  return (
-    <div ref={ref}>
-      <TierListRow {...props} isInView={isInView} />
     </div>
   )
 }
