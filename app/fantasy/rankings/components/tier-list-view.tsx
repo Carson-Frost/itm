@@ -1,8 +1,8 @@
 "use client"
 
 import { memo, useMemo, useState, useRef, useEffect } from "react"
-import { useSortable, SortableContext, rectSortingStrategy, defaultAnimateLayoutChanges, AnimateLayoutChanges } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
+import { useSortable, SortableContext, rectSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
 import { RankedPlayer, TierSeparator } from "@/lib/types/ranking-schemas"
@@ -17,10 +17,11 @@ import { PlayerContextMenuItems } from "./player-row"
 import { TierContextMenuItems } from "./tier-row"
 import { cn } from "@/lib/utils"
 
+const noAnimations = () => false
+
 const CARD_CHAMFER_OUTER = "polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px)"
 const CARD_CHAMFER_INNER = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)"
 
-// Abbreviate long names to first initial + last name for card display
 function cardName(name: string): string {
   if (name.length <= 15) return name
   const spaceIdx = name.indexOf(" ")
@@ -28,13 +29,8 @@ function cardName(name: string): string {
   return `${name[0]}. ${name.slice(spaceIdx + 1)}`
 }
 
-// Suppress initial mount animation while keeping smooth reorder transitions
-const layoutChanges: AnimateLayoutChanges = (args) =>
-  defaultAnimateLayoutChanges({ ...args, wasDragging: true })
+// ---------- Shared card visuals ----------
 
-// Visual content of a card — headshots, badges, text. Memoized separately
-// so it doesn't re-render when dnd-kit's internal context changes trigger
-// the parent wrapper to re-evaluate its hook.
 const TierPlayerCardContent = memo(function TierPlayerCardContent({
   player,
   onClick,
@@ -44,7 +40,6 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
 }) {
   return (
     <div className="group/card relative w-full h-full p-[3px]">
-      {/* Headshot — fills entire card, clipped to match chamfered border */}
       <div className="relative w-full h-full overflow-hidden" style={{ clipPath: CARD_CHAMFER_INNER }}>
         {player.headshotUrl ? (
           <img
@@ -55,18 +50,12 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
         ) : (
           <div className="w-full h-full bg-muted" />
         )}
-
-        {/* Rank — top-right */}
         <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground pointer-events-none">
           {player.rank}
         </span>
-
-        {/* Drag handle — vertically centered, left edge */}
         <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/70 dark:text-white/80 opacity-0 group-hover/card:opacity-100 transition-opacity dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))] pointer-events-none">
           <GripVertical className="h-5 w-5" />
         </div>
-
-        {/* Info strip — dark nameplate at bottom */}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end pointer-events-none">
           <button
             className="text-xs font-semibold text-center truncate w-full leading-tight text-white hover:underline [text-shadow:0_1px_2px_rgba(0,0,0,0.6)] pointer-events-auto"
@@ -87,31 +76,32 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
   )
 })
 
+// ---------- Card props shared by both sortable and static versions ----------
+
 interface TierPlayerCardProps {
   player: RankedPlayer
   isPlacingTier: boolean
   isSelected: boolean
-  isSortable: boolean
   onClick: (player: RankedPlayer) => void
-  onSelect: (player: RankedPlayer) => void
+  onSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onMoveUp?: (player: RankedPlayer) => void
   onMoveDown?: (player: RankedPlayer) => void
+  onRemove?: (player: RankedPlayer) => void
   canMoveUp?: boolean
   canMoveDown?: boolean
 }
 
-// Thin sortable wrapper — re-renders on dnd-kit context changes but only
-// runs the hook + a div. The heavy visual content in TierPlayerCardContent
-// is memo-skipped because its props (player, onClick) are stable references.
-const TierPlayerCard = memo(function TierPlayerCard({
+// ---------- Sortable card: used in visible tiers ----------
+
+const SortableTierPlayerCard = memo(function SortableTierPlayerCard({
   player,
   isPlacingTier,
   isSelected,
-  isSortable,
   onClick,
   onSelect,
   onMoveUp,
   onMoveDown,
+  onRemove,
   canMoveUp,
   canMoveDown,
 }: TierPlayerCardProps) {
@@ -122,21 +112,17 @@ const TierPlayerCard = memo(function TierPlayerCard({
     transform,
     transition,
     isDragging,
-    isSorting,
   } = useSortable({
     id: player.playerId,
-    animateLayoutChanges: layoutChanges,
-    // Cards are always draggable (so the pointer sensor captures them),
-    // but only droppable in active tiers — this prevents dnd-kit from
-    // measuring all ~200+ cards on every drag event
-    disabled: isSortable ? false : { droppable: true },
+    disabled: isPlacingTier,
+    animateLayoutChanges: noAnimations,
   })
 
   const style = isDragging
     ? undefined
     : {
         transform: CSS.Transform.toString(transform),
-        transition: isSorting ? transition : undefined,
+        transition,
       }
 
   return (
@@ -144,14 +130,15 @@ const TierPlayerCard = memo(function TierPlayerCard({
       <ContextMenuTrigger asChild>
         <div
           ref={setNodeRef}
+          data-player-card={player.playerId}
           style={style}
           className={cn(
             "card-chamfer w-[130px] h-[110px] m-1.5 touch-none",
-            isDragging && "opacity-0",
+            isDragging && "opacity-30",
             isSelected && "card-selected",
             isPlacingTier ? "cursor-cell" : "cursor-grab active:cursor-grabbing"
           )}
-          onClick={() => isPlacingTier ? onClick(player) : onSelect(player)}
+          onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
           {...(!isPlacingTier ? { ...attributes, ...listeners } : {})}
         >
           <TierPlayerCardContent player={player} onClick={onClick} />
@@ -167,22 +154,68 @@ const TierPlayerCard = memo(function TierPlayerCard({
           onSelect={onSelect}
           onMoveUp={onMoveUp}
           onMoveDown={onMoveDown}
+          onRemove={onRemove}
         />
       </ContextMenuContent>
     </ContextMenu>
   )
 })
 
-// Drag overlay — two nested divs for proper chamfered border rendering
+// ---------- Static card: used in off-screen tiers (no dnd-kit hooks) ----------
+
+const StaticTierPlayerCard = memo(function StaticTierPlayerCard({
+  player,
+  isPlacingTier,
+  isSelected,
+  onClick,
+  onSelect,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  canMoveUp,
+  canMoveDown,
+}: TierPlayerCardProps) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          data-player-card={player.playerId}
+          className={cn(
+            "card-chamfer w-[130px] h-[110px] m-1.5 touch-none",
+            isSelected && "card-selected",
+            isPlacingTier ? "cursor-cell" : "cursor-grab"
+          )}
+          onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
+        >
+          <TierPlayerCardContent player={player} onClick={onClick} />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <PlayerContextMenuItems
+          player={player}
+          isSelected={isSelected}
+          canMoveUp={!!canMoveUp}
+          canMoveDown={!!canMoveDown}
+          onClick={onClick}
+          onSelect={onSelect}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          onRemove={onRemove}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+})
+
+// ---------- Overlay ----------
+
 export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
   return (
     <div
       className="w-[130px] h-[110px] shadow-lg"
       style={{ clipPath: CARD_CHAMFER_OUTER }}
     >
-      {/* Border layer */}
       <div className="w-full h-full bg-border flex items-center justify-center">
-        {/* Fill layer */}
         <div
           className="flex flex-col"
           style={{
@@ -192,28 +225,18 @@ export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
             background: "var(--background)",
           }}
         >
-          {/* Headshot — fills entire card */}
           <div className="relative w-full h-full overflow-hidden">
             {player.headshotUrl ? (
-              <img
-                src={player.headshotUrl}
-                alt=""
-                className="w-full h-full object-cover object-top"
-              />
+              <img src={player.headshotUrl} alt="" className="w-full h-full object-cover object-top" />
             ) : (
               <div className="w-full h-full bg-muted" />
             )}
-            {/* Rank — top-right */}
             <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground">
               {player.rank}
             </span>
-
-            {/* Drag handle — vertically centered, left edge */}
             <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/40 dark:text-white/40 dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
               <GripVertical className="h-5 w-5" />
             </div>
-
-            {/* Info strip — dark nameplate at bottom */}
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end">
               <span className="text-xs font-semibold text-center truncate w-full leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
                 {cardName(player.name)}
@@ -230,23 +253,58 @@ export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
   )
 }
 
-// Container ID for a tier bucket, used by useDroppable and collision detection
+// ---------- Helpers ----------
+
 export function getBucketContainerId(bucket: TierBucket): string {
   return bucket.tierIndex !== null ? `tier-bucket-${bucket.tierIndex}` : "tier-bucket-untiered"
 }
 
+// Hook: track whether element is in/near the scrollable viewport
+function useInView(scrollRoot: React.RefObject<HTMLElement | null>) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isInView, setIsInView] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    const root = scrollRoot.current
+    if (!el || !root) return
+
+    // Synchronous initial check — avoids all tiers starting as "visible"
+    const rootRect = root.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const buffer = 50
+    const initiallyVisible =
+      elRect.bottom >= rootRect.top - buffer &&
+      elRect.top <= rootRect.bottom + buffer
+    setIsInView(initiallyVisible)
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsInView(entry.isIntersecting),
+      { root, rootMargin: "50px 0px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [scrollRoot])
+
+  return { ref, isInView }
+}
+
+// ---------- Tier row ----------
+
 interface TierListRowProps {
   bucket: TierBucket
   containerId: string
-  isActiveTier: boolean
   isPlacingTier: boolean
-  selectedPlayerId: string | null
+  selectedPlayerIds: Set<string>
+  sortableTierIds: Set<string>
+  isInView: boolean
   onPlayerClick: (player: RankedPlayer) => void
-  onPlayerSelect: (player: RankedPlayer) => void
+  onPlayerSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onTierRename?: (tierId: string, newLabel: string) => void
   onTierRemove?: (tier: TierSeparator) => void
   onMoveUp?: (player: RankedPlayer) => void
   onMoveDown?: (player: RankedPlayer) => void
+  onRemovePlayer?: (player: RankedPlayer) => void
   playerCount: number
   startIndex: number
 }
@@ -254,29 +312,29 @@ interface TierListRowProps {
 const TierListRow = memo(function TierListRow({
   bucket,
   containerId,
-  isActiveTier,
   isPlacingTier,
-  selectedPlayerId,
+  selectedPlayerIds,
+  sortableTierIds,
+  isInView,
   onPlayerClick,
   onPlayerSelect,
   onTierRename,
   onTierRemove,
   onMoveUp,
   onMoveDown,
+  onRemovePlayer,
   playerCount,
   startIndex,
 }: TierListRowProps) {
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: containerId })
+  const { setNodeRef: setDropRef } = useDroppable({ id: containerId })
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(bucket.label)
   const inputRef = useRef<HTMLInputElement>(null)
   const renamingFromMenu = useRef(false)
 
-  // Only provide sortable item IDs for active tiers — inactive tier cards
-  // have disabled droppable so the sorting strategy doesn't need their IDs
-  const playerIds = useMemo(
-    () => isActiveTier ? bucket.players.map((p) => p.playerId) : [],
-    [bucket.players, isActiveTier]
+  const sortableIds = useMemo(
+    () => bucket.players.map((p) => p.playerId),
+    [bucket.players]
   )
 
   useEffect(() => {
@@ -301,6 +359,9 @@ const TierListRow = memo(function TierListRow({
   }
 
   const hasTier = !!bucket.tierId
+  // Sortable only if in-view AND (no drag active OR this tier is in the sortable set)
+  const isSortable = isInView && (sortableTierIds.size === 0 || sortableTierIds.has(containerId))
+  const CardComponent = isSortable ? SortableTierPlayerCard : StaticTierPlayerCard
 
   const tierLabelContent = (
     <div
@@ -343,6 +404,25 @@ const TierListRow = memo(function TierListRow({
     </div>
   )
 
+  const cardContent = bucket.players.map((player, i) => {
+    const globalIndex = startIndex + i
+    return (
+      <CardComponent
+        key={player.playerId}
+        player={player}
+        isPlacingTier={isPlacingTier}
+        isSelected={selectedPlayerIds.has(player.playerId)}
+        onClick={onPlayerClick}
+        onSelect={onPlayerSelect}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
+        onRemove={onRemovePlayer}
+        canMoveUp={globalIndex > 0}
+        canMoveDown={globalIndex < playerCount - 1}
+      />
+    )
+  })
+
   return (
     <div className="flex border-b last:border-b-0">
       {hasTier ? (
@@ -379,93 +459,237 @@ const TierListRow = memo(function TierListRow({
         </ContextMenu>
       ) : tierLabelContent}
 
-      <SortableContext items={playerIds} strategy={rectSortingStrategy}>
+      {isSortable ? (
+        <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
+          <div
+            ref={setDropRef}
+            data-tier-container={containerId}
+            className="flex-1 flex flex-wrap py-1 px-0.5 min-h-[126px]"
+            style={{ contain: "layout style" }}
+          >
+            {cardContent}
+          </div>
+        </SortableContext>
+      ) : (
         <div
           ref={setDropRef}
-          className={cn(
-            "flex-1 flex flex-wrap py-1 px-0.5 min-h-[126px] transition-colors",
-            isOver && bucket.players.length === 0 && "bg-accent/50"
-          )}
+          data-tier-container={containerId}
+          className="flex-1 flex flex-wrap py-1 px-0.5 min-h-[126px]"
+          style={{ contain: "layout style" }}
         >
-          {bucket.players.map((player, i) => {
-            const globalIndex = startIndex + i
-            return (
-              <TierPlayerCard
-                key={player.playerId}
-                player={player}
-                isPlacingTier={isPlacingTier}
-                isSelected={selectedPlayerId === player.playerId}
-                isSortable={isActiveTier}
-                onClick={onPlayerClick}
-                onSelect={onPlayerSelect}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
-                canMoveUp={globalIndex > 0}
-                canMoveDown={globalIndex < playerCount - 1}
-              />
-            )
-          })}
+          {cardContent}
         </div>
-      </SortableContext>
+      )}
     </div>
   )
 })
 
+// ---------- Optimistic grab overlay ----------
+// Shows a DOM clone of the card instantly on pointerdown, before dnd-kit activates.
+// Pure DOM manipulation — zero React renders — so it feels instant.
+
+function useOptimisticGrab(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  isPlacingTier: boolean,
+  activeId: string | null,
+  onGrab?: (playerId: string) => void,
+) {
+  const cloneRef = useRef<HTMLElement | null>(null)
+  const sourcePlayerIdRef = useRef<string | null>(null)
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onGrabRef = useRef(onGrab)
+  onGrabRef.current = onGrab
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container || isPlacingTier) return
+
+    function onPointerDown(e: PointerEvent) {
+      if (e.button !== 0) return
+      const card = (e.target as HTMLElement).closest?.("[data-player-card]") as HTMLElement | null
+      if (!card) return
+
+      const playerId = card.getAttribute("data-player-card")
+      if (!playerId) return
+
+      const rect = card.getBoundingClientRect()
+      offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+
+      const clone = card.cloneNode(true) as HTMLElement
+      clone.style.position = "fixed"
+      clone.style.left = `${rect.left}px`
+      clone.style.top = `${rect.top}px`
+      clone.style.width = `${rect.width}px`
+      clone.style.height = `${rect.height}px`
+      clone.style.zIndex = "10000"
+      clone.style.pointerEvents = "none"
+      clone.style.willChange = "transform"
+      clone.style.transition = "none"
+      clone.id = "optimistic-grab-clone"
+      document.body.appendChild(clone)
+
+      cloneRef.current = clone
+      sourcePlayerIdRef.current = playerId
+      card.style.opacity = "0.3"
+
+      // Only pre-warm after 50ms hold — avoids wasted work on quick clicks
+      holdTimerRef.current = setTimeout(() => {
+        onGrabRef.current?.(playerId)
+        holdTimerRef.current = null
+      }, 50)
+    }
+
+    function onPointerMove(e: PointerEvent) {
+      const clone = cloneRef.current
+      if (!clone) return
+      clone.style.left = `${e.clientX - offsetRef.current.x}px`
+      clone.style.top = `${e.clientY - offsetRef.current.y}px`
+    }
+
+    function cleanup() {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current)
+        holdTimerRef.current = null
+      }
+      if (cloneRef.current) {
+        cloneRef.current.remove()
+        cloneRef.current = null
+      }
+      if (sourcePlayerIdRef.current) {
+        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
+        if (src) src.style.opacity = ""
+        sourcePlayerIdRef.current = null
+      }
+    }
+
+    function onPointerUp() {
+      cleanup()
+    }
+
+    container.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      cleanup()
+    }
+  }, [scrollRef, isPlacingTier])
+
+  // When dnd-kit activates, remove clone immediately — DragOverlay takes over
+  useEffect(() => {
+    if (activeId && cloneRef.current) {
+      cloneRef.current.remove()
+      cloneRef.current = null
+      if (sourcePlayerIdRef.current) {
+        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
+        if (src) src.style.opacity = ""
+        sourcePlayerIdRef.current = null
+      }
+    }
+    // When drag ends, ensure cleanup
+    if (!activeId) {
+      if (cloneRef.current) {
+        cloneRef.current.remove()
+        cloneRef.current = null
+      }
+      if (sourcePlayerIdRef.current) {
+        const src = document.querySelector(`[data-player-card="${sourcePlayerIdRef.current}"]`) as HTMLElement | null
+        if (src) src.style.opacity = ""
+        sourcePlayerIdRef.current = null
+      }
+    }
+  }, [activeId])
+}
+
+// ---------- TierListView ----------
+
 interface TierListViewProps {
   buckets: TierBucket[]
-  activeTierIds: Set<string>
   isPlacingTier: boolean
-  selectedPlayerId: string | null
+  selectedPlayerIds: Set<string>
+  activeId: string | null
+  sortableTierIds: Set<string>
   onPlayerClick: (player: RankedPlayer) => void
-  onPlayerSelect: (player: RankedPlayer) => void
+  onPlayerSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onTierRename: (tierId: string, newLabel: string) => void
   onTierRemove: (tier: TierSeparator) => void
   onMoveUp: (player: RankedPlayer) => void
   onMoveDown: (player: RankedPlayer) => void
+  onRemovePlayer?: (player: RankedPlayer) => void
+  onGrab?: (playerId: string) => void
   className?: string
 }
 
 export function TierListView({
   buckets,
-  activeTierIds,
   isPlacingTier,
-  selectedPlayerId,
+  selectedPlayerIds,
+  activeId,
+  sortableTierIds,
   onPlayerClick,
   onPlayerSelect,
   onTierRename,
   onTierRemove,
   onMoveUp,
   onMoveDown,
+  onRemovePlayer,
+  onGrab,
   className,
 }: TierListViewProps) {
   const totalPlayers = buckets.reduce((sum, b) => sum + b.players.length, 0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useOptimisticGrab(scrollRef, isPlacingTier, activeId, onGrab)
 
   let runningIndex = 0
   return (
-    <div className={cn("border rounded-md overflow-auto max-h-[calc(100vh-320px)] bg-card", className)}>
+    <div
+      ref={scrollRef}
+      className={cn("border rounded-md overflow-auto max-h-[calc(100vh-320px)] bg-card", className)}
+    >
       {buckets.map((bucket, i) => {
         const containerId = getBucketContainerId(bucket)
         const bucketStartIndex = runningIndex
         runningIndex += bucket.players.length
         return (
-          <TierListRow
+          <TierListRowWithVisibility
             key={bucket.tierIndex ?? `untiered-${i}`}
+            scrollRef={scrollRef}
             bucket={bucket}
             containerId={containerId}
-            isActiveTier={activeTierIds.has(containerId)}
             isPlacingTier={isPlacingTier}
-            selectedPlayerId={selectedPlayerId}
+            selectedPlayerIds={selectedPlayerIds}
+            sortableTierIds={sortableTierIds}
             onPlayerClick={onPlayerClick}
             onPlayerSelect={onPlayerSelect}
             onTierRename={onTierRename}
             onTierRemove={onTierRemove}
             onMoveUp={onMoveUp}
             onMoveDown={onMoveDown}
+            onRemovePlayer={onRemovePlayer}
             playerCount={totalPlayers}
             startIndex={bucketStartIndex}
           />
         )
       })}
+    </div>
+  )
+}
+
+// Wrapper that tracks visibility and passes isInView to TierListRow
+function TierListRowWithVisibility({
+  scrollRef,
+  ...props
+}: Omit<TierListRowProps, "isInView"> & { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const { ref, isInView } = useInView(scrollRef)
+
+  return (
+    <div ref={ref}>
+      <TierListRow {...props} isInView={isInView} />
     </div>
   )
 }

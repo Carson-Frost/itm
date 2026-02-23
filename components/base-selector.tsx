@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select"
 import { InfoTooltip } from "@/components/info-tooltip"
 
-export type BaseOption = "sleeper-adp" | "itm"
+export type BaseOption = "sleeper-adp" | "itm" | "blank"
 
 interface BaseSelectorProps {
   value: BaseOption
@@ -20,6 +20,7 @@ interface BaseSelectorProps {
 const baseOptions: { value: BaseOption; label: string; disabled?: boolean }[] = [
   { value: "sleeper-adp", label: "Sleeper ADP" },
   { value: "itm", label: "ITM Rankings", disabled: true },
+  { value: "blank", label: "Blank" },
 ]
 
 export function BaseSelector({ value, onChange, disabled }: BaseSelectorProps) {

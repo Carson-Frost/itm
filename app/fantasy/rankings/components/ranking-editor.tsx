@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
-import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown, List, LayoutGrid } from "lucide-react"
+import React, { useCallback, useMemo, useState, useEffect, useRef, startTransition } from "react"
+import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown, List, LayoutGrid, LayoutList } from "lucide-react"
 import { toast } from "sonner"
 import {
   DndContext,
@@ -18,7 +18,7 @@ import {
   DragEndEvent,
   DragOverEvent,
   CollisionDetection,
-  UniqueIdentifier,
+  MeasuringStrategy,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -56,13 +56,20 @@ import { SettingsDialog } from "./settings-dialog"
 import { PlayerRow, PlayerRowOverlay } from "./player-row"
 import { TierRow, TierRowOverlay } from "./tier-row"
 import { RemoveTierDialog } from "./remove-tier-dialog"
+import { RemovePlayerDialog } from "./remove-player-dialog"
+import { AddPlayerDrawer } from "./add-player-drawer"
 import { TierListView, TierPlayerCardOverlay } from "./tier-list-view"
+import { CardView, CardItemOverlay } from "./card-view"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { useRelativeTime } from "@/hooks/use-relative-time"
+import { useHotkeys } from "@/hooks/use-hotkeys"
+import { Kbd } from "@/components/ui/kbd"
 
 interface RankingEditorProps {
   ranking: UserRanking
   saveStatus: "saved" | "saving" | "error"
+  lastSavedAt: Date | null
   onSettingsSave: (updates: Partial<UserRanking>) => void
   onPlayersChange: (players: RankedPlayer[]) => void
   onTiersChange: (tiers: TierSeparator[], hueIndex?: number) => void
@@ -145,6 +152,7 @@ function getColumnGroupOrder(position: FantasyPosition | "All") {
 }
 
 const MAX_HISTORY = 50
+const emptySet = new Set<string>()
 
 function toPlayer(ranked: RankedPlayer): Player {
   return {
@@ -165,12 +173,14 @@ function toPlayer(ranked: RankedPlayer): Player {
 export function RankingEditor({
   ranking,
   saveStatus,
+  lastSavedAt,
   onSettingsSave,
   onPlayersChange,
   onTiersChange,
 }: RankingEditorProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set())
   const [latestSeason, setLatestSeason] = useState(2025)
   const [playerStats, setPlayerStats] = useState<PlayerStatsMap>({})
   const [searchQuery, setSearchQuery] = useState("")
@@ -180,12 +190,11 @@ export function RankingEditor({
   const [filterTeam, setFilterTeam] = useState<string>("ALL")
   const [activeId, setActiveId] = useState<string | null>(null)
   const [removeTierTarget, setRemoveTierTarget] = useState<TierSeparator | null>(null)
+  const [addPlayerOpen, setAddPlayerOpen] = useState(false)
+  const [removePlayerTarget, setRemovePlayerTarget] = useState<RankedPlayer | null>(null)
   const [isPlacingTier, setIsPlacingTier] = useState(false)
-  const [view, setView] = useState<"list" | "tierlist">("list")
-  // Tracks which tier containers have their cards enabled as droppable targets.
-  // Cards in inactive tiers are draggable but not droppable, so dnd-kit skips
-  // measuring them — reducing initial drag measurements from ~200+ to ~8.
-  const [activeTierIds, setActiveTierIds] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<"row" | "tier" | "card">("row")
+  const savedTimeLabel = useRelativeTime(lastSavedAt)
 
   // Undo/Redo history
   const [history, setHistory] = useState<RankedPlayer[][]>([])
@@ -278,7 +287,8 @@ export function RankingEditor({
     }
 
     fetchStats()
-  }, [ranking.players])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -319,7 +329,7 @@ export function RankingEditor({
   // during cross-container moves don't cause overId to go null.
   // recentlyMovedToNewContainer signals the collision detection to
   // use the cached value during the layout reflow frame.
-  const lastOverId = useRef<UniqueIdentifier | null>(null)
+  const lastOverId = useRef<string | number | null>(null)
   const recentlyMovedToNewContainer = useRef(false)
 
   useEffect(() => {
@@ -334,11 +344,17 @@ export function RankingEditor({
     return bucketMapRef.current.get(id)
   }, [])
 
-  // Collision detection adapted from the official @dnd-kit multi-container example.
-  // pointerWithin finds intersecting droppables, with rectIntersection as fallback.
-  // When a container is hit, drills down to the closest item within it.
-  // Empty containers return the container ID directly.
-  // Caches lastOverId to survive layout shifts after cross-container moves.
+  // Pre-computed: containerId → Set of player IDs for fast collision lookup
+  const containerPlayerSets = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const bucket of currentBuckets) {
+      map.set(getBucketContainerId(bucket), new Set(bucket.players.map((p) => p.playerId)))
+    }
+    return map
+  }, [currentBuckets])
+
+  // Collision detection for tier view — multi-container pattern.
+  // When pointer is over a tier container, drill into its cards for precision.
   const tierListCollision = useCallback<CollisionDetection>((args) => {
     const pointerIntersections = pointerWithin(args)
     const intersections =
@@ -347,19 +363,20 @@ export function RankingEditor({
     let overId = getFirstCollision(intersections, "id")
 
     if (overId != null) {
-      // If overId is a container, drill down to closest item within it
-      if (String(overId).startsWith("tier-bucket-")) {
-        const containerItems = args.droppableContainers.filter(
-          (c) =>
-            c.id !== overId &&
-            bucketMapRef.current.get(String(c.id)) === String(overId)
-        )
+      // If over a tier container, find closest card within it
+      const playerSet = String(overId).startsWith("tier-bucket-")
+        ? containerPlayerSets.get(String(overId))
+        : undefined
 
-        if (containerItems.length > 0) {
-          overId = closestCenter({
-            ...args,
-            droppableContainers: containerItems,
-          })[0]?.id
+      if (playerSet && playerSet.size > 0) {
+        const closestItem = closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter(
+            (c) => playerSet.has(String(c.id))
+          ),
+        })
+        if (closestItem.length > 0) {
+          overId = closestItem[0].id
         }
       }
 
@@ -367,13 +384,12 @@ export function RankingEditor({
       return [{ id: overId }]
     }
 
-    // Layout shift after cross-container move can make overId null
     if (recentlyMovedToNewContainer.current) {
       lastOverId.current = activeId
     }
 
     return lastOverId.current ? [{ id: lastOverId.current }] : []
-  }, [activeId])
+  }, [activeId, containerPlayerSets])
 
   const filteredPlayers = useMemo(() => {
     let players = ranking.players || []
@@ -430,38 +446,54 @@ export function RankingEditor({
   // Snapshot of buckets at drag start for cancel recovery
   const clonedBuckets = useRef<TierBucket[] | null>(null)
 
+  // Tracks which tier containers should render sortable cards.
+  // Only the source tier (and any tier dragged over) become sortable,
+  // so dnd-kit activation only touches ~25 cards instead of 60-80.
+  const [sortableTierIds, setSortableTierIds] = useState<Set<string>>(new Set())
+
+  // Called on pointerdown (before dnd-kit activates) to pre-warm the source
+  // tier's sortable cards via startTransition. React processes these re-renders
+  // in non-blocking chunks while the optimistic clone follows the cursor smoothly.
+  // By the time dnd-kit fires after 3px, the sortable cards are already mounted.
+  const handleTierGrab = useCallback((playerId: string) => {
+    const sourceContainer = bucketMapRef.current.get(playerId)
+    if (sourceContainer) {
+      startTransition(() => {
+        setSortableTierIds(new Set([sourceContainer]))
+      })
+    }
+  }, [])
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const id = event.active.id as string
     setActiveId(id)
-    if (view === "tierlist") {
-      // Activate the source tier so its cards become droppable targets
-      const sourceContainer = findContainer(id)
-      if (sourceContainer) {
-        setActiveTierIds(new Set([sourceContainer]))
-      }
-      // Snapshot for cancel recovery — don't set dragBuckets yet to avoid
-      // a full re-render on grab. Buckets are lazily created on first
-      // cross-container move in handleDragOver.
+    if (view === "tier") {
       clonedBuckets.current = currentBuckets.map(b => ({ ...b, players: [...b.players] }))
+      // sortableTierIds already pre-warmed by handleTierGrab on pointerdown
     }
-  }, [view, currentBuckets, findContainer])
+  }, [view, currentBuckets])
 
-  // Cross-tier movement during drag (adapted from official @dnd-kit multi-container example)
+  // Cross-tier movement during drag. Fires when dragged item enters a
+  // different container. Moves the player from source to target tier.
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
-      if (view !== "tierlist") return
+      if (view !== "tier") return
 
       const { active, over } = event
-      const overId = over?.id
-      if (overId == null) return
+      if (!over) return
 
-      const overContainer = findContainer(String(overId))
-      const activeContainer = findContainer(String(active.id))
-      if (!overContainer || !activeContainer || activeContainer === overContainer) return
+      const activeId = String(active.id)
+      const overId = String(over.id)
 
-      // Activate the hovered tier so its cards become droppable targets
-      // for precise within-tier positioning on subsequent drag events
-      setActiveTierIds(prev => {
+      const activeContainer = findContainer(activeId)
+      const overContainer = overId.startsWith("tier-bucket-")
+        ? overId
+        : findContainer(overId)
+
+      if (!activeContainer || !overContainer || activeContainer === overContainer) return
+
+      // Make the destination tier sortable so its cards shift to make room
+      setSortableTierIds((prev) => {
         if (prev.has(overContainer)) return prev
         const next = new Set(prev)
         next.add(overContainer)
@@ -469,46 +501,24 @@ export function RankingEditor({
       })
 
       setDragBuckets((prev) => {
-        // Lazy init: first cross-container move creates mutable copy
         const buckets = prev ?? currentBuckets.map(b => ({ ...b, players: [...b.players] }))
 
         const fromIdx = buckets.findIndex((b) => getBucketContainerId(b) === activeContainer)
         const toIdx = buckets.findIndex((b) => getBucketContainerId(b) === overContainer)
         if (fromIdx === -1 || toIdx === -1) return buckets
 
-        const activeItems = buckets[fromIdx].players
-        const overItems = buckets[toIdx].players
-        const activeIndex = activeItems.findIndex((p) => p.playerId === String(active.id))
-        const overIndex = overItems.findIndex((p) => p.playerId === String(overId))
+        const activeIndex = buckets[fromIdx].players.findIndex((p) => p.playerId === activeId)
+        if (activeIndex === -1) return buckets
 
-        let newIndex: number
-
-        if (String(overId).startsWith("tier-bucket-")) {
-          // Dropping on container itself (empty tier)
-          newIndex = overItems.length
-        } else {
-          // Insert above or below the target card based on pointer position
-          const isBelowOverItem =
-            over &&
-            active.rect.current.translated &&
-            active.rect.current.translated.top > over.rect.top + over.rect.height
-
-          const modifier = isBelowOverItem ? 1 : 0
-          newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length
-        }
-
-        // Skip if already at the target position (prevents oscillation at tier edges)
-        if (fromIdx === toIdx && activeIndex === newIndex) return buckets
+        // Determine insertion position in target container
+        const overIndex = buckets[toIdx].players.findIndex((p) => p.playerId === overId)
+        const newIndex = overIndex >= 0 ? overIndex : buckets[toIdx].players.length
 
         recentlyMovedToNewContainer.current = true
 
-        // Only clone the two affected buckets — unchanged tiers keep stable
-        // references so memo prevents their rows from re-rendering
         const newBuckets = [...buckets]
         newBuckets[fromIdx] = { ...buckets[fromIdx], players: [...buckets[fromIdx].players] }
-        if (fromIdx !== toIdx) {
-          newBuckets[toIdx] = { ...buckets[toIdx], players: [...buckets[toIdx].players] }
-        }
+        newBuckets[toIdx] = { ...buckets[toIdx], players: [...buckets[toIdx].players] }
 
         const [player] = newBuckets[fromIdx].players.splice(activeIndex, 1)
         newBuckets[toIdx].players.splice(newIndex, 0, player)
@@ -523,7 +533,7 @@ export function RankingEditor({
     (event: DragEndEvent) => {
       const { active, over } = event
       setActiveId(null)
-      setActiveTierIds(new Set())
+      setSortableTierIds(new Set())
       clonedBuckets.current = null
 
       if (!over) {
@@ -531,43 +541,62 @@ export function RankingEditor({
         return
       }
 
-      // Tier list view: persist the bucket state built up during drag
-      if (view === "tierlist") {
-        const activeContainer = findContainer(String(active.id))
-        const overContainer = findContainer(String(over.id))
+      // Tier list view: within-tier reorder via arrayMove, cross-tier already
+      // handled in onDragOver — just persist the final bucket state.
+      if (view === "tier") {
         const finalBuckets = dragBuckets ?? currentBuckets
         setDragBuckets(null)
 
-        if (!activeContainer || !overContainer) return
+        const activePlayerId = String(active.id)
+        const overId = String(over.id)
 
-        // Within-container reorder (cross-container was handled by onDragOver)
-        if (activeContainer === overContainer) {
+        // Same-container reorder
+        const activeContainer = findContainer(activePlayerId)
+        const overContainer = overId.startsWith("tier-bucket-")
+          ? overId
+          : findContainer(overId)
+
+        if (activeContainer && overContainer && activeContainer === overContainer) {
           const bucketIdx = finalBuckets.findIndex(
             (b) => getBucketContainerId(b) === activeContainer
           )
-          if (bucketIdx === -1) return
+          if (bucketIdx !== -1) {
+            const players = finalBuckets[bucketIdx].players
+            const oldIndex = players.findIndex((p) => p.playerId === activePlayerId)
+            const newIndex = players.findIndex((p) => p.playerId === overId)
 
-          const bucket = finalBuckets[bucketIdx]
-          const activeIdx = bucket.players.findIndex((p) => p.playerId === String(active.id))
-          const overIdx = bucket.players.findIndex((p) => p.playerId === String(over.id))
-
-          if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
-            const reordered = finalBuckets.map((b, i) =>
-              i === bucketIdx
-                ? { ...b, players: arrayMove(b.players, activeIdx, overIdx) }
-                : b
-            )
-            const { players, tiers } = bucketsToData(reordered)
-            handlePlayersChangeWithHistory(players)
-            onTiersChange(recalcDefaultNames(tiers))
-            return
+            if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+              const newBuckets = [...finalBuckets]
+              newBuckets[bucketIdx] = {
+                ...finalBuckets[bucketIdx],
+                players: arrayMove(players, oldIndex, newIndex),
+              }
+              const { players: flatPlayers, tiers } = bucketsToData(newBuckets)
+              handlePlayersChangeWithHistory(flatPlayers)
+              onTiersChange(recalcDefaultNames(tiers))
+              return
+            }
           }
         }
 
-        // Cross-container or same position — persist current bucket state
+        // Cross-container: already moved in onDragOver, just persist
         const { players, tiers } = bucketsToData(finalBuckets)
         handlePlayersChangeWithHistory(players)
         onTiersChange(recalcDefaultNames(tiers))
+        return
+      }
+
+      // Card view: operates on all players (no tiers)
+      if (view === "card") {
+        const allPlayers = ranking.players || []
+        const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
+        const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+        if (oldIndex === -1 || newIndex === -1) return
+
+        const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
+          (player, idx) => ({ ...player, rank: idx + 1 })
+        )
+        handlePlayersChangeWithHistory(newPlayers)
         return
       }
 
@@ -602,7 +631,7 @@ export function RankingEditor({
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null)
-    setActiveTierIds(new Set())
+    setSortableTierIds(new Set())
     setDragBuckets(null)
     clonedBuckets.current = null
   }, [])
@@ -611,12 +640,42 @@ export function RankingEditor({
     setSelectedPlayer(toPlayer(ranked))
   }, [])
 
-  const handlePlayerSelect = useCallback((ranked: RankedPlayer) => {
-    setSelectedPlayerId((prev) => prev === ranked.playerId ? null : ranked.playerId)
+  const handleBatchSelect = useCallback((ids: Set<string>) => {
+    setSelectedPlayerIds(ids)
+  }, [])
+
+  const handlePlayerSelect = useCallback((ranked: RankedPlayer, ctrlKey?: boolean) => {
+    setSelectedPlayerIds((prev) => {
+      if (ctrlKey) {
+        const next = new Set(prev)
+        if (next.has(ranked.playerId)) {
+          next.delete(ranked.playerId)
+        } else {
+          next.add(ranked.playerId)
+        }
+        return next
+      }
+      // Normal click: toggle single selection
+      if (prev.size === 1 && prev.has(ranked.playerId)) {
+        return new Set()
+      }
+      return new Set([ranked.playerId])
+    })
   }, [])
 
   const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
+
+  // Position rank map for card view overlay
+  const positionRankMap = useMemo(() => {
+    const map = new Map<string, string>()
+    const counts: Record<string, number> = {}
+    for (const p of (ranking.players || [])) {
+      counts[p.position] = (counts[p.position] || 0) + 1
+      map.set(p.playerId, `${p.position}${counts[p.position]}`)
+    }
+    return map
+  }, [ranking.players])
 
   // Build display items: always merge players with tiers, then filter out
   // non-matching players while keeping tier separators in place. When search
@@ -652,9 +711,8 @@ export function RankingEditor({
   // Move a specific player up/down via context menu. Temporarily selects the
   // player so handleMovePlayer can find it, then performs the move.
   const handleContextMoveUp = useCallback((player: RankedPlayer) => {
-    setSelectedPlayerId(player.playerId)
-    // Need to defer so selectedPlayerId state is set before handleMovePlayer reads it.
-    // Instead, inline the move logic directly using the player's position in displayItems.
+    setSelectedPlayerIds(new Set([player.playerId]))
+    // Inline the move logic directly using the player's position in displayItems.
     const merged = mergeItems(ranking.players || [], ranking.tiers || [])
     const currentIndex = merged.findIndex(
       (item) => item.type === "player" && item.data.playerId === player.playerId
@@ -667,7 +725,7 @@ export function RankingEditor({
   }, [ranking.players, ranking.tiers, handlePlayersChangeWithHistory, onTiersChange])
 
   const handleContextMoveDown = useCallback((player: RankedPlayer) => {
-    setSelectedPlayerId(player.playerId)
+    setSelectedPlayerIds(new Set([player.playerId]))
     const merged = mergeItems(ranking.players || [], ranking.tiers || [])
     const currentIndex = merged.findIndex(
       (item) => item.type === "player" && item.data.playerId === player.playerId
@@ -687,7 +745,9 @@ export function RankingEditor({
   // with the visible neighbor in the filtered player list.
   const handleMovePlayer = useCallback(
     (direction: "up" | "down") => {
-      if (!selectedPlayerId) return
+      if (selectedPlayerIds.size === 0) return
+      // For move, use first selected player
+      const selectedPlayerId = [...selectedPlayerIds][0]
 
       if (hasFilters) {
         // Filtered view: no tiers visible, swap with visible neighbor
@@ -727,12 +787,13 @@ export function RankingEditor({
       handlePlayersChangeWithHistory(players)
       onTiersChange(recalcDefaultNames(tiers))
     },
-    [selectedPlayerId, hasFilters, ranking.players, ranking.tiers, filteredPlayers, handlePlayersChangeWithHistory, onTiersChange]
+    [selectedPlayerIds, hasFilters, ranking.players, ranking.tiers, filteredPlayers, handlePlayersChangeWithHistory, onTiersChange]
   )
 
-  const selectedDisplayIndex = selectedPlayerId
+  const firstSelectedId = selectedPlayerIds.size > 0 ? [...selectedPlayerIds][0] : null
+  const selectedDisplayIndex = firstSelectedId
     ? displayItems.findIndex(
-        (item) => item.type === "player" && item.data.playerId === selectedPlayerId
+        (item) => item.type === "player" && item.data.playerId === firstSelectedId
       )
     : -1
   const canMoveUp = selectedDisplayIndex > 0
@@ -826,9 +887,78 @@ export function RankingEditor({
     onTiersChange(tiers)
   }, [ranking.tiers, onTiersChange])
 
+  // Add player to ranking
+  const handleAddPlayer = useCallback((player: {
+    playerId: string
+    name: string
+    position: FantasyPosition
+    team: string
+    headshotUrl?: string
+  }) => {
+    const players = ranking.players || []
+    const newPlayer: RankedPlayer = {
+      rank: players.length + 1,
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      headshotUrl: player.headshotUrl,
+    }
+    const updated = [...players, newPlayer]
+    handlePlayersChangeWithHistory(updated)
+  }, [ranking.players, handlePlayersChangeWithHistory])
+
+  // Remove player from ranking
+  const handleRemovePlayer = useCallback((player: RankedPlayer) => {
+    setRemovePlayerTarget(player)
+  }, [])
+
+  const handleConfirmRemovePlayer = useCallback(() => {
+    if (!removePlayerTarget) return
+    const players = (ranking.players || [])
+      .filter((p) => p.playerId !== removePlayerTarget.playerId)
+      .map((p, i) => ({ ...p, rank: i + 1 }))
+    handlePlayersChangeWithHistory(players)
+    setRemovePlayerTarget(null)
+    setSelectedPlayerIds(new Set())
+  }, [removePlayerTarget, ranking.players, handlePlayersChangeWithHistory])
+
+  const existingPlayerIds = useMemo(
+    () => new Set((ranking.players || []).map((p) => p.playerId)),
+    [ranking.players]
+  )
+
+  // Hotkeys
+  useHotkeys(useMemo(() => [
+    { key: "z", ctrl: true, handler: handleUndo },
+    { key: "Z", ctrl: true, shift: true, handler: handleRedo },
+    { key: "y", ctrl: true, handler: handleRedo },
+    { key: "ArrowUp", ctrl: true, handler: () => handleMovePlayer("up") },
+    { key: "ArrowDown", ctrl: true, handler: () => handleMovePlayer("down") },
+    { key: "Escape", handler: () => setSelectedPlayerIds(new Set()) },
+    {
+      key: "Delete",
+      handler: () => {
+        if (selectedPlayerIds.size === 0) return
+        const first = [...selectedPlayerIds][0]
+        const player = (ranking.players || []).find((p) => p.playerId === first)
+        if (player) setRemovePlayerTarget(player)
+      },
+    },
+    {
+      key: "Backspace",
+      handler: () => {
+        if (selectedPlayerIds.size === 0) return
+        const first = [...selectedPlayerIds][0]
+        const player = (ranking.players || []).find((p) => p.playerId === first)
+        if (player) setRemovePlayerTarget(player)
+      },
+    },
+  ], [handleUndo, handleRedo, handleMovePlayer, selectedPlayerIds, ranking.players]))
+
   return (
     <div>
-      <RankingHeader ranking={ranking} />
+      <RankingHeader ranking={ranking} onSettingsOpen={() => setSettingsOpen(true)} />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -887,7 +1017,9 @@ export function RankingEditor({
             {saveStatus === "saved" && (
               <>
                 <Check className="h-4 w-4 text-green-500" />
-                <span className="hidden sm:inline">Saved</span>
+                <span className="hidden sm:inline">
+                  {savedTimeLabel ? `Saved ${savedTimeLabel}` : "Saved"}
+                </span>
               </>
             )}
             {saveStatus === "error" && (
@@ -907,7 +1039,7 @@ export function RankingEditor({
                     <ArrowUp className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Move Up</TooltipContent>
+                <TooltipContent>Move Up <Kbd>Ctrl ↑</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -920,7 +1052,7 @@ export function RankingEditor({
                     <ArrowDown className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Move Down</TooltipContent>
+                <TooltipContent>Move Down <Kbd>Ctrl ↓</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -933,7 +1065,7 @@ export function RankingEditor({
                     <Undo2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Undo</TooltipContent>
+                <TooltipContent>Undo <Kbd>Ctrl+Z</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -946,7 +1078,7 @@ export function RankingEditor({
                     <Redo2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Redo</TooltipContent>
+                <TooltipContent>Redo <Kbd>Ctrl+Shift+Z</Kbd></TooltipContent>
               </Tooltip>
             </div>
           </TooltipProvider>
@@ -967,7 +1099,14 @@ export function RankingEditor({
               </>
             )}
           </Button>
-          <SettingsDialog ranking={ranking} onSave={onSettingsSave} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddPlayerOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Player
+          </Button>
         </div>
       </div>
 
@@ -994,62 +1133,115 @@ export function RankingEditor({
           ) : (
             <div />
           )}
-          <div className="flex gap-0.5">
-            <button
-              onClick={() => setView("list")}
-              className={cn(
-                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
-                view === "list"
-                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
-                  : "text-muted-foreground border-transparent hover:text-foreground"
-              )}
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setView("tierlist")}
-              className={cn(
-                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
-                view === "tierlist"
-                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
-                  : "text-muted-foreground border-transparent hover:text-foreground"
-              )}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-          </div>
+          <TooltipProvider>
+            <div className="flex gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("row")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "row"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Row View</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("tier")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "tier"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Tier View</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("card")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "card"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <LayoutList className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Card View</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       )}
 
       {/* Player Table / Tier List */}
       <DndContext
         sensors={sensors}
-        collisionDetection={view === "tierlist" ? tierListCollision : closestCenter}
+        collisionDetection={view === "tier" ? tierListCollision : closestCenter}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
         {(ranking.players?.length || 0) === 0 ? (
-          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
-            No players found. Try refreshing the page.
+          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md space-y-3">
+            <p>No players yet. Add players to get started.</p>
+            <Button variant="outline" size="sm" onClick={() => setAddPlayerOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Player
+            </Button>
           </div>
         ) : filteredPlayers.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
             No players match your filters
           </div>
-        ) : view === "tierlist" ? (
+        ) : view === "tier" ? (
           <TierListView
             buckets={displayBuckets}
-            activeTierIds={activeTierIds}
             isPlacingTier={isPlacingTier}
-            selectedPlayerId={isPlacingTier ? null : selectedPlayerId}
+            selectedPlayerIds={isPlacingTier ? emptySet : selectedPlayerIds}
+            activeId={activeId}
+            sortableTierIds={sortableTierIds}
+            onGrab={handleTierGrab}
             onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
             onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
             onTierRename={handleTierRename}
             onTierRemove={setRemoveTierTarget}
             onMoveUp={handleContextMoveUp}
             onMoveDown={handleContextMoveDown}
+            onRemovePlayer={handleRemovePlayer}
+            className={cn(
+              ranking.positions.length > 1 && "rounded-tl-none",
+              "rounded-tr-none"
+            )}
+          />
+        ) : view === "card" ? (
+          <CardView
+            players={filteredPlayers}
+            playerStats={playerStats}
+            isPlacingTier={isPlacingTier}
+            selectedPlayerIds={isPlacingTier ? emptySet : selectedPlayerIds}
+            onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
+            onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+            onBatchSelect={handleBatchSelect}
+            onMoveUp={handleContextMoveUp}
+            onMoveDown={handleContextMoveDown}
+            onRemovePlayer={handleRemovePlayer}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"
@@ -1152,12 +1344,13 @@ export function RankingEditor({
                           player={player}
                           stats={playerStats[player.playerId]}
                           columnGroups={columnGroups}
-                          isSelected={!isPlacingTier && selectedPlayerId === player.playerId}
+                          isSelected={!isPlacingTier && selectedPlayerIds.has(player.playerId)}
                           isPlacingTier={isPlacingTier}
                           onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
                           onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
                           onMoveUp={handleContextMoveUp}
                           onMoveDown={handleContextMoveDown}
+                          onRemove={handleRemovePlayer}
                           canMoveUp={playerDisplayIndex > 0}
                           canMoveDown={playerDisplayIndex < displayItems.length - 1}
                         />
@@ -1173,10 +1366,21 @@ export function RankingEditor({
           </>
         )}
         <DragOverlay>
-          {view === "tierlist" && activeId ? (
+          {view === "tier" && activeId ? (
             (() => {
               const player = filteredPlayers.find((p) => p.playerId === activeId)
               return player ? <TierPlayerCardOverlay player={player} /> : null
+            })()
+          ) : view === "card" && activeId ? (
+            (() => {
+              const player = filteredPlayers.find((p) => p.playerId === activeId)
+              return player ? (
+                <CardItemOverlay
+                  player={player}
+                  positionRank={positionRankMap.get(player.playerId) ?? ""}
+                  stats={playerStats[player.playerId]}
+                />
+              ) : null
             })()
           ) : activeItem?.type === "tier" ? (
             <TierRowOverlay
@@ -1213,6 +1417,29 @@ export function RankingEditor({
         onOpenChange={(open) => !open && setRemoveTierTarget(null)}
         tierLabel={removeTierTarget?.label ?? ""}
         onConfirm={handleConfirmRemoveTier}
+      />
+
+      <SettingsDialog
+        ranking={ranking}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSave={onSettingsSave}
+      />
+
+      <AddPlayerDrawer
+        open={addPlayerOpen}
+        onOpenChange={setAddPlayerOpen}
+        existingPlayerIds={existingPlayerIds}
+        positions={ranking.positions}
+        scoring={ranking.scoring}
+        onAddPlayer={handleAddPlayer}
+      />
+
+      <RemovePlayerDialog
+        open={!!removePlayerTarget}
+        onOpenChange={(open) => !open && setRemovePlayerTarget(null)}
+        playerName={removePlayerTarget?.name ?? ""}
+        onConfirm={handleConfirmRemovePlayer}
       />
     </div>
   )

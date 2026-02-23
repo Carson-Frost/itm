@@ -1,6 +1,7 @@
 "use client"
 
 import React, { memo } from "react"
+import { Kbd } from "@/components/ui/kbd"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
@@ -25,10 +26,11 @@ export interface PlayerContextMenuProps {
   onSelect: (player: RankedPlayer) => void
   onMoveUp?: (player: RankedPlayer) => void
   onMoveDown?: (player: RankedPlayer) => void
+  onRemove?: (player: RankedPlayer) => void
 }
 
 export function PlayerContextMenuItems({
-  player, isSelected, canMoveUp, canMoveDown, onClick, onSelect, onMoveUp, onMoveDown,
+  player, isSelected, canMoveUp, canMoveDown, onClick, onSelect, onMoveUp, onMoveDown, onRemove,
 }: PlayerContextMenuProps) {
   return (
     <>
@@ -37,15 +39,29 @@ export function PlayerContextMenuItems({
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem disabled={!canMoveUp} onSelect={() => onMoveUp?.(player)}>
-        Move Up
+        <span className="flex-1">Move Up</span>
+        <Kbd className="ml-auto">Ctrl ↑</Kbd>
       </ContextMenuItem>
       <ContextMenuItem disabled={!canMoveDown} onSelect={() => onMoveDown?.(player)}>
-        Move Down
+        <span className="flex-1">Move Down</span>
+        <Kbd className="ml-auto">Ctrl ↓</Kbd>
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onSelect={() => onSelect(player)}>
         {isSelected ? "Deselect" : "Select"}
       </ContextMenuItem>
+      {onRemove && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={() => onRemove(player)}
+          >
+            <span className="flex-1">Remove from Board</span>
+            <Kbd className="ml-auto">Del</Kbd>
+          </ContextMenuItem>
+        </>
+      )}
     </>
   )
 }
@@ -84,9 +100,10 @@ interface PlayerRowProps {
   isSelected?: boolean
   isPlacingTier?: boolean
   onClick: (player: RankedPlayer) => void
-  onSelect: (player: RankedPlayer) => void
+  onSelect: (player: RankedPlayer, ctrlKey?: boolean) => void
   onMoveUp?: (player: RankedPlayer) => void
   onMoveDown?: (player: RankedPlayer) => void
+  onRemove?: (player: RankedPlayer) => void
   canMoveUp?: boolean
   canMoveDown?: boolean
 }
@@ -102,7 +119,7 @@ function getStatValue(stats: PlayerStats | undefined, key: string): string | num
 // Stable reference to avoid re-creating on every render
 const noAnimations = () => false
 
-export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, isSelected, isPlacingTier, onClick, onSelect, onMoveUp, onMoveDown, canMoveUp, canMoveDown }: PlayerRowProps) {
+export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, isSelected, isPlacingTier, onClick, onSelect, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown }: PlayerRowProps) {
   const {
     attributes,
     listeners,
@@ -128,7 +145,7 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
         <TableRow
           ref={setNodeRef}
           style={style}
-          onClick={() => onSelect(player)}
+          onClick={(e) => onSelect(player, e.ctrlKey || e.metaKey)}
           className={cn(
             "group touch-none",
             isSelected && "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)]",
@@ -220,6 +237,7 @@ export const PlayerRow = memo(function PlayerRow({ player, stats, columnGroups, 
           onSelect={onSelect}
           onMoveUp={onMoveUp}
           onMoveDown={onMoveDown}
+          onRemove={onRemove}
         />
       </ContextMenuContent>
     </ContextMenu>
