@@ -85,6 +85,28 @@ export interface PlayerStats {
   receptions?: number
   receivingYards?: number
   receivingTDs?: number
+  // Advanced
+  targetShare?: number
+  airYardsShare?: number
+  wopr?: number
+  racr?: number
+  receivingEpa?: number
+  rushingEpa?: number
+  passingEpa?: number
+  passingCpoe?: number
+  receivingYac?: number
+  passingYac?: number
+  receivingFirstDowns?: number
+  rushingFirstDowns?: number
+  passingFirstDowns?: number
+}
+
+export interface RosterInfo {
+  height?: number
+  weight?: number
+  college?: string
+  yearsExp?: number
+  jerseyNumber?: number
 }
 
 export interface ColumnGroup {

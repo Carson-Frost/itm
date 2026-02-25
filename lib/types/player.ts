@@ -28,6 +28,21 @@ export interface Player {
   receivingYards?: number
   receivingTDs?: number
 
+  // Advanced stats
+  targetShare?: number
+  airYardsShare?: number
+  wopr?: number
+  racr?: number
+  receivingEpa?: number
+  rushingEpa?: number
+  passingEpa?: number
+  passingCpoe?: number
+  receivingYac?: number
+  passingYac?: number
+  receivingFirstDowns?: number
+  rushingFirstDowns?: number
+  passingFirstDowns?: number
+
   // Calculated
   fantasyPoints: number // STD scoring
   fantasyPointsPPR: number // PPR scoring

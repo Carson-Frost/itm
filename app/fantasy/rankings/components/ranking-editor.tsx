@@ -52,7 +52,7 @@ import { RemoveTierDialog } from "./remove-tier-dialog"
 import { RemovePlayerDialog } from "./remove-player-dialog"
 import { AddPlayerDrawer } from "./add-player-drawer"
 import { TierListView } from "./tier-list-view"
-import { CardView, CardItemOverlay } from "./card-view"
+import { CardView, CardItemOverlay, CardTierOverlay } from "./card-view"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useRelativeTime } from "@/hooks/use-relative-time"
@@ -88,7 +88,41 @@ interface PlayerStatsMap {
     receptions?: number
     receivingYards?: number
     receivingTDs?: number
+    // Advanced
+    targetShare?: number
+    airYardsShare?: number
+    wopr?: number
+    racr?: number
+    receivingEpa?: number
+    rushingEpa?: number
+    passingEpa?: number
+    passingCpoe?: number
+    receivingYac?: number
+    passingYac?: number
+    receivingFirstDowns?: number
+    rushingFirstDowns?: number
+    passingFirstDowns?: number
   }
+}
+
+interface RosterInfoMap {
+  [playerId: string]: {
+    height?: number
+    weight?: number
+    college?: string
+    yearsExp?: number
+    jerseyNumber?: number
+  }
+}
+
+interface TeamOffenseStats {
+  passYards: number
+  rushYards: number
+  totalTDs: number
+}
+
+interface TeamStatsMap {
+  [team: string]: TeamOffenseStats
 }
 
 // Column definitions matching fantasy charts
@@ -176,6 +210,8 @@ export function RankingEditor({
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set())
   const [latestSeason, setLatestSeason] = useState(2025)
   const [playerStats, setPlayerStats] = useState<PlayerStatsMap>({})
+  const [rosterInfo, setRosterInfo] = useState<RosterInfoMap>({})
+  const [teamStats, setTeamStats] = useState<TeamStatsMap>({})
   const [searchQuery, setSearchQuery] = useState("")
   const [filterPosition, setFilterPosition] = useState<FantasyPosition | "All">(
     ranking.positions.length === 1 ? ranking.positions[0] : "All"
@@ -270,9 +306,60 @@ export function RankingEditor({
               receptions: player.receptions,
               receivingYards: player.receivingYards,
               receivingTDs: player.receivingTDs,
+              // Advanced
+              targetShare: player.targetShare,
+              airYardsShare: player.airYardsShare,
+              wopr: player.wopr,
+              racr: player.racr,
+              receivingEpa: player.receivingEpa,
+              rushingEpa: player.rushingEpa,
+              passingEpa: player.passingEpa,
+              passingCpoe: player.passingCpoe,
+              receivingYac: player.receivingYac,
+              passingYac: player.passingYac,
+              receivingFirstDowns: player.receivingFirstDowns,
+              rushingFirstDowns: player.rushingFirstDowns,
+              passingFirstDowns: player.passingFirstDowns,
             }
           }
           setPlayerStats(statsMap)
+
+          // Compute team offense totals
+          const teamMap: TeamStatsMap = {}
+          for (const player of statsData.players as Player[]) {
+            if (!player.team) continue
+            if (!teamMap[player.team]) {
+              teamMap[player.team] = { passYards: 0, rushYards: 0, totalTDs: 0 }
+            }
+            const t = teamMap[player.team]
+            t.passYards += player.passingYards ?? 0
+            t.rushYards += player.rushingYards ?? 0
+            t.totalTDs += (player.passingTDs ?? 0) + (player.rushingTDs ?? 0) + (player.receivingTDs ?? 0)
+          }
+          setTeamStats(teamMap)
+
+          // Fetch bulk roster data
+          try {
+            const rosterRes = await fetch(`/api/fantasy/roster-data?season=${data.availableSeasons[0]}`)
+            const rosterData = await rosterRes.json()
+            if (Array.isArray(rosterData.rosterData)) {
+              const rosterMap: RosterInfoMap = {}
+              for (const r of rosterData.rosterData) {
+                if (r.gsis_id) {
+                  rosterMap[r.gsis_id] = {
+                    height: r.height,
+                    weight: r.weight,
+                    college: r.college,
+                    yearsExp: r.years_exp,
+                    jerseyNumber: r.jersey_number,
+                  }
+                }
+              }
+              setRosterInfo(rosterMap)
+            }
+          } catch {
+            // Roster data is supplementary, don't block on failure
+          }
         }
       } catch {
         // Handle silently
@@ -280,7 +367,7 @@ export function RankingEditor({
     }
 
     fetchStats()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [])
 
   const sensors = useSensors(
@@ -370,17 +457,32 @@ export function RankingEditor({
 
       if (!over) return
 
-      // Card view: operates on all players (no tiers)
+      // Card view: uses same merged display list as row view (supports tiers)
       if (view === "card") {
-        const allPlayers = ranking.players || []
-        const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
-        const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+        // Search/team filter → sparse results, hide tiers, operate on flat list
+        if (searchQuery || filterTeam !== "ALL") {
+          const allPlayers = ranking.players || []
+          const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
+          const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+          if (oldIndex === -1 || newIndex === -1) return
+
+          const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
+            (player, idx) => ({ ...player, rank: idx + 1 })
+          )
+          handlePlayersChangeWithHistory(newPlayers)
+          return
+        }
+
+        // Merged list with tiers
+        const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+        const oldIndex = merged.findIndex((item) => getItemId(item) === active.id)
+        const newIndex = merged.findIndex((item) => getItemId(item) === over.id)
         if (oldIndex === -1 || newIndex === -1) return
 
-        const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
-          (player, idx) => ({ ...player, rank: idx + 1 })
-        )
-        handlePlayersChangeWithHistory(newPlayers)
+        const reordered = arrayMove(merged, oldIndex, newIndex)
+        const { players, tiers } = splitItems(reordered)
+        handlePlayersChangeWithHistory(players)
+        onTiersChange(recalcDefaultNames(tiers))
         return
       }
 
@@ -650,6 +752,19 @@ export function RankingEditor({
     onTiersChange(updated, baseHue + 1)
     setIsPlacingTier(false)
   }, [ranking.tiers, ranking.hueIndex, onTiersChange])
+
+  // Update a player's note — must avoid undefined (Firestore rejects it)
+  const handleNoteChange = useCallback((playerId: string, note: string) => {
+    const players = (ranking.players || []).map((p) => {
+      if (p.playerId !== playerId) return p
+      if (note) return { ...p, note }
+      // Remove the key entirely instead of setting undefined
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { note: _removed, ...rest } = p
+      return rest as RankedPlayer
+    })
+    handlePlayersChangeWithHistory(players)
+  }, [ranking.players, handlePlayersChangeWithHistory])
 
   // Remove tier after confirmation
   const handleConfirmRemoveTier = useCallback(() => {
@@ -1009,8 +1124,12 @@ export function RankingEditor({
           />
         ) : view === "card" ? (
           <CardView
-            players={filteredPlayers}
+            displayItems={displayItems}
+            allPlayers={ranking.players || []}
             playerStats={playerStats}
+            rosterInfo={rosterInfo}
+            teamStats={teamStats}
+            tierIndexMap={tierIndexMap}
             isPlacingTier={isPlacingTier}
             selectedPlayerIds={isPlacingTier ? emptySet : selectedPlayerIds}
             onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
@@ -1019,6 +1138,9 @@ export function RankingEditor({
             onMoveUp={handleContextMoveUp}
             onMoveDown={handleContextMoveDown}
             onRemovePlayer={handleRemovePlayer}
+            onTierRename={handleTierRename}
+            onTierRemove={setRemoveTierTarget}
+            onNoteChange={handleNoteChange}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"
@@ -1145,6 +1267,16 @@ export function RankingEditor({
         <DragOverlay>
           {view === "card" && activeId ? (
             (() => {
+              // Check if it's a tier or player
+              const tierItem = (ranking.tiers || []).find((t) => t.id === activeId)
+              if (tierItem) {
+                return (
+                  <CardTierOverlay
+                    tier={tierItem}
+                    index={tierIndexMap.get(tierItem.id) ?? 0}
+                  />
+                )
+              }
               const player = filteredPlayers.find((p) => p.playerId === activeId)
               return player ? (
                 <CardItemOverlay

@@ -32,6 +32,7 @@ export interface RankedPlayer {
   position: FantasyPosition
   team: string
   headshotUrl?: string
+  note?: string
 }
 
 // User's custom ranking stored in Firestore

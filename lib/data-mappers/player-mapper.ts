@@ -43,6 +43,22 @@ export function mapSeasonStatsToPlayer(
   player.completions = stats.completions
   player.passingYards = stats.passing_yards
   player.passingTDs = stats.passing_tds
+  player.interceptions = stats.passing_interceptions
+
+  // Advanced stats
+  player.targetShare = stats.target_share
+  player.airYardsShare = stats.air_yards_share
+  player.wopr = stats.wopr
+  player.racr = stats.racr
+  player.receivingEpa = stats.receiving_epa
+  player.rushingEpa = stats.rushing_epa
+  player.passingEpa = stats.passing_epa
+  player.passingCpoe = stats.passing_cpoe
+  player.receivingYac = stats.receiving_yards_after_catch
+  player.passingYac = stats.passing_yards_after_catch
+  player.receivingFirstDowns = stats.receiving_first_downs
+  player.rushingFirstDowns = stats.rushing_first_downs
+  player.passingFirstDowns = stats.passing_first_downs
 
   return player
 }
