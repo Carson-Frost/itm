@@ -1140,7 +1140,6 @@ export function RankingEditor({
             onRemovePlayer={handleRemovePlayer}
             onTierRename={handleTierRename}
             onTierRemove={setRemoveTierTarget}
-            onNoteChange={handleNoteChange}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"

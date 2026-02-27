@@ -14,9 +14,6 @@ import { PlayerContextMenuItems } from "./player-row"
 import { TierContextMenuItems } from "./tier-row"
 import { cn } from "@/lib/utils"
 
-const CARD_CHAMFER_OUTER = "polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px)"
-const CARD_CHAMFER_INNER = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)"
-
 function cardName(name: string): string {
   if (name.length <= 15) return name
   const spaceIdx = name.indexOf(" ")
@@ -34,8 +31,8 @@ const TierPlayerCardContent = memo(function TierPlayerCardContent({
   onClick: (player: RankedPlayer) => void
 }) {
   return (
-    <div className="group/card relative w-full h-full p-[3px]">
-      <div className="relative w-full h-full overflow-hidden" style={{ clipPath: CARD_CHAMFER_INNER }}>
+    <div className="group/card relative w-full h-full">
+      <div className="relative w-full h-full overflow-hidden">
         {player.headshotUrl ? (
           <img
             src={player.headshotUrl}
@@ -104,8 +101,8 @@ const TierPlayerCard = memo(function TierPlayerCard({
         <div
           data-player-card={player.playerId}
           className={cn(
-            "card-chamfer w-[130px] h-[110px] touch-none",
-            isSelected && "card-selected",
+            "w-[120px] h-[120px] touch-none relative overflow-hidden border border-border/20",
+            isSelected && "border-primary shadow-[inset_0_0_10px_-2px_var(--primary)]",
             isPlacingTier ? "cursor-cell" : "cursor-grab"
           )}
           onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
@@ -135,41 +132,26 @@ const TierPlayerCard = memo(function TierPlayerCard({
 export function TierPlayerCardOverlay({ player }: { player: RankedPlayer }) {
   return (
     <div
-      className="w-[130px] h-[110px] shadow-lg"
-      style={{ clipPath: CARD_CHAMFER_OUTER }}
+      className="w-[120px] h-[120px] shadow-lg relative overflow-hidden border border-border/20"
     >
-      <div className="w-full h-full bg-border flex items-center justify-center">
-        <div
-          className="flex flex-col"
-          style={{
-            width: "calc(100% - 6px)",
-            height: "calc(100% - 6px)",
-            clipPath: CARD_CHAMFER_INNER,
-            background: "var(--background)",
-          }}
-        >
-          <div className="relative w-full h-full overflow-hidden">
-            {player.headshotUrl ? (
-              <img src={player.headshotUrl} alt="" className="w-full h-full object-cover object-top" />
-            ) : (
-              <div className="w-full h-full bg-muted" />
-            )}
-            <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground">
-              {player.rank}
-            </span>
-            <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/40 dark:text-white/40 dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
-              <GripVertical className="h-5 w-5" />
-            </div>
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end">
-              <span className="text-xs font-semibold text-center truncate w-full leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
-                {cardName(player.name)}
-              </span>
-              <div className="flex items-center gap-1">
-                <PositionBadge position={player.position} />
-                <span className="text-[10px] text-white/80 font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">{player.team}</span>
-              </div>
-            </div>
-          </div>
+      {player.headshotUrl ? (
+        <img src={player.headshotUrl} alt="" className="w-full h-full object-cover object-top" />
+      ) : (
+        <div className="w-full h-full bg-muted" />
+      )}
+      <span className="absolute top-1 right-1.5 text-sm font-semibold text-foreground">
+        {player.rank}
+      </span>
+      <div className="absolute left-0 top-[48%] -translate-y-1/2 text-muted-foreground/40 dark:text-white/40 dark:[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
+        <GripVertical className="h-5 w-5" />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-0.5 px-2 flex flex-col items-center justify-end">
+        <span className="text-xs font-semibold text-center truncate w-full leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
+          {cardName(player.name)}
+        </span>
+        <div className="flex items-center gap-1">
+          <PositionBadge position={player.position} />
+          <span className="text-[10px] text-white/80 font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">{player.team}</span>
         </div>
       </div>
     </div>
@@ -183,11 +165,11 @@ export function getBucketContainerId(bucket: TierBucket): string {
 }
 
 const DRAG_THRESHOLD = 3
-const CELL_W = 130
-const CELL_H = 110
-const GAP = 6
-const PAD_X = 6
-const PAD_Y = 4
+const CELL_W = 120
+const CELL_H = 120
+const GAP = 8
+const PAD_X = 8
+const PAD_Y = 8
 
 // Compute which card slot the cursor is over within a tier container
 function computeInsertIndex(
@@ -546,7 +528,9 @@ const TierListRow = memo(function TierListRow({
       cardElements.push(
         <div
           key="__placeholder__"
-          className="w-[130px] h-[110px] rounded bg-foreground/5"
+          className="h-[120px] transition-[width] duration-150 ease-out"
+          ref={(el) => { if (el) requestAnimationFrame(() => { el.style.width = '120px' }) }}
+          style={{ width: 0 }}
         />
       )
     }
@@ -572,7 +556,7 @@ const TierListRow = memo(function TierListRow({
   }
 
   return (
-    <div className="flex border-b last:border-b-0">
+    <div className="flex">
       {hasTier ? (
         <ContextMenu>
           <ContextMenuTrigger asChild>
@@ -609,7 +593,7 @@ const TierListRow = memo(function TierListRow({
 
       <div
         data-tier-container={containerId}
-        className="flex-1 grid grid-cols-[repeat(auto-fill,130px)] auto-rows-[110px] gap-1.5 py-1 px-1.5 min-h-[126px] content-start"
+        className="flex-1 grid grid-cols-[repeat(auto-fill,120px)] auto-rows-[120px] gap-2 p-2 min-h-[126px] content-start"
         style={{ contain: "layout style" }}
       >
         {cardElements}
@@ -663,7 +647,7 @@ export function TierListView({
   return (
     <div
       ref={scrollRef}
-      className={cn("border rounded-md overflow-auto max-h-[calc(100vh-320px)] bg-card", className)}
+      className={cn("border rounded-md overflow-auto max-h-[calc(100vh-320px)] bg-background", className)}
     >
       {activeBuckets.map((bucket, i) => {
         const containerId = getBucketContainerId(bucket)

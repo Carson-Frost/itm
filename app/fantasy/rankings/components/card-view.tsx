@@ -1,9 +1,10 @@
 "use client"
 
 import { memo, useCallback, useMemo, useRef, useState, useEffect } from "react"
-import { useSortable, SortableContext, rectSortingStrategy } from "@dnd-kit/sortable"
+import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Pencil, Check, X } from "lucide-react"
+import { GripVertical } from "lucide-react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -34,10 +35,7 @@ const positionColors: Record<string, string> = {
   TE: "text-orange-500 dark:text-orange-400",
 }
 
-// ─── Chamfer clip paths ─────────────────────────────────────────────────────
-
-const CHAMFER_OUTER = "polygon(12px 0%, 100% 0%, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0% 100%, 0% 12px)"
-const CHAMFER_INNER = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)"
+// ─── (chamfer removed — cards now render as connected rows) ─────────────────
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -312,72 +310,6 @@ function TeamBlock({ teamStats }: { teamStats?: TeamOffenseStats }) {
   )
 }
 
-// ─── Note editor ────────────────────────────────────────────────────────────
-
-const NoteEditor = memo(function NoteEditor({
-  note,
-  onSave,
-}: {
-  note: string | undefined
-  onSave: (note: string) => void
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [draft, setDraft] = useState(note || "")
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  function startEditing() {
-    setDraft(note || "")
-    setIsEditing(true)
-  }
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) inputRef.current.focus()
-  }, [isEditing])
-
-  function commit() {
-    onSave(draft.trim())
-    setIsEditing(false)
-  }
-
-  if (isEditing) {
-    return (
-      <div className="flex items-center gap-1.5 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit()
-            if (e.key === "Escape") { setDraft(note || ""); setIsEditing(false) }
-          }}
-          onBlur={commit}
-          onPointerDown={(e) => e.stopPropagation()}
-          autoComplete="off"
-          placeholder="Add a scouting note..."
-          className="flex-1 min-w-0 text-xs bg-transparent border-b border-muted-foreground/20 outline-none text-foreground/80 placeholder:text-muted-foreground/30 py-0.5"
-        />
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={commit} className="text-muted-foreground/50 hover:text-foreground"><Check className="h-3.5 w-3.5" /></button>
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => { setDraft(note || ""); setIsEditing(false) }} className="text-muted-foreground/50 hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-      <span className={cn("text-xs truncate flex-1 min-w-0", note ? "text-foreground/60 italic" : "text-muted-foreground/40")}>
-        {note || "No notes"}
-      </span>
-      <button
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); startEditing() }}
-        className="shrink-0 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
-      >
-        <Pencil className="h-3 w-3" />
-      </button>
-    </div>
-  )
-})
-
 // ─── Tier separator ─────────────────────────────────────────────────────────
 
 const CardTierSeparator = memo(function CardTierSeparator({
@@ -413,7 +345,7 @@ const CardTierSeparator = memo(function CardTierSeparator({
       <ContextMenuTrigger asChild>
         <div
           ref={setNodeRef} style={style}
-          className={cn("flex items-center gap-2 px-4 h-7 touch-none cursor-grab active:cursor-grabbing group", isDragging && "opacity-0")}
+          className={cn("flex items-center gap-2 px-4 h-10 touch-none cursor-grab active:cursor-grabbing group border-b border-border/20", isDragging && "opacity-0")}
           {...attributes} {...listeners}
         >
           <div className="flex-1 h-[3px] group-hover:h-[5px] transition-all duration-150" style={{ backgroundColor: color }} />
@@ -456,22 +388,18 @@ interface CardItemProps {
   onMoveUp?: (player: RankedPlayer) => void
   onMoveDown?: (player: RankedPlayer) => void
   onRemove?: (player: RankedPlayer) => void
-  onNoteChange: (playerId: string, note: string) => void
   canMoveUp: boolean
   canMoveDown: boolean
 }
 
 const CardItem = memo(function CardItem({
   player, positionRank, stats, roster, teamOffense, isSelected, isPlacingTier,
-  onClick, onSelect, onMoveUp, onMoveDown, onRemove, onNoteChange, canMoveUp, canMoveDown,
+  onClick, onSelect, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown,
 }: CardItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.playerId, animateLayoutChanges: noAnimations,
   })
-  const cardStyle = {
-    ...(isDragging ? {} : { transform: CSS.Transform.toString(transform), transition }),
-    clipPath: CHAMFER_OUTER,
-  }
+  const cardStyle = isDragging ? undefined : { transform: CSS.Transform.toString(transform), transition }
 
   const main = getMainDefs(player.position)
   const sec = getSecDefs(player.position)
@@ -494,133 +422,110 @@ const CardItem = memo(function CardItem({
           data-player-card={player.playerId}
           style={cardStyle}
           className={cn(
-            "card-chamfer touch-none group",
-            isSelected && "card-selected",
+            "touch-none group bg-background border-b border-border/20 last:border-b-0",
+            isSelected && "shadow-[inset_0_0_0_2px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)]",
             isDragging && "opacity-0",
-            isPlacingTier ? "cursor-cell" : "cursor-grab active:cursor-grabbing"
+            isPlacingTier ? "hover:bg-primary/10 cursor-cell" : "cursor-grab active:cursor-grabbing"
           )}
           onClick={(e) => isPlacingTier ? onClick(player) : onSelect(player, e.ctrlKey || e.metaKey)}
           {...(!isPlacingTier ? { ...attributes, ...listeners } : {})}
         >
-          {/* Content clipped to inner chamfer, inset for border gap */}
-          <div
-            className={cn(
-              "m-[4px] overflow-hidden",
-              isSelected && "shadow-[inset_0_0_12px_-3px_var(--color-ring)]"
-            )}
-            style={{ clipPath: CHAMFER_INNER }}
-          >
-            <div className="flex min-h-[110px]">
-              {/* ─── Headshot: square, fills card height ─── */}
-              <div className="w-[110px] shrink-0 self-stretch relative overflow-hidden bg-muted/10">
-                {player.headshotUrl ? (
-                  <img
-                    src={player.headshotUrl}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover object-top"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-muted/15" />
-                )}
-                {/* Grip overlay on hover */}
-                <div className="absolute inset-y-0 left-0 w-6 flex items-center justify-center text-white/80 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
-                  <GripVertical className="h-4 w-4" />
-                </div>
-                {/* Tier placement hover overlay */}
-                {isPlacingTier && (
-                  <div className="absolute inset-0 bg-transparent group-hover:bg-primary/10 transition-colors pointer-events-none" />
-                )}
+          <div className="flex min-h-[110px]">
+            {/* Grip / rank area */}
+            <div className="w-10 shrink-0 flex items-center justify-center relative">
+              <span className="text-sm font-medium text-muted-foreground group-hover:opacity-0 transition-opacity">{player.rank}</span>
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <GripVertical className="h-3.5 w-3.5" />
               </div>
+            </div>
 
-              {/* ─── Right side: stats row + notes ─── */}
-              <div className="flex-1 flex flex-col min-w-0">
-                {/* Stats row */}
-                <div className="flex-1 flex items-stretch min-w-0">
-                  {/* Identity */}
-                  <div className="w-[155px] shrink-0 flex flex-col justify-center px-3 min-w-0">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onClick(player) }}
-                      className="font-bold text-[15px] uppercase truncate hover:underline text-left leading-tight"
-                    >
-                      {player.name}
-                    </button>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <PositionBadge position={player.position} />
-                      <span className="text-[11px] text-muted-foreground font-medium">{player.team || "FA"}</span>
-                    </div>
-                    {bioLine && (
-                      <div className="text-[10px] text-muted-foreground/60 mt-1 truncate leading-tight">{bioLine}</div>
-                    )}
+            {/* Headshot */}
+            <div className="w-[110px] shrink-0 self-stretch relative overflow-hidden">
+              {player.headshotUrl ? (
+                <img
+                  src={player.headshotUrl}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover object-top"
+                />
+              ) : (
+                <div className="absolute inset-0" />
+              )}
+            </div>
+
+            {/* ─── Right side ─── */}
+            <div className="flex-1 flex min-w-0">
+              <div className="flex-1 flex items-stretch min-w-0">
+                {/* Identity */}
+                <div className="w-[155px] shrink-0 flex flex-col justify-center px-3 min-w-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onClick(player) }}
+                    className="font-bold text-[15px] uppercase truncate hover:underline text-left leading-tight"
+                  >
+                    {player.name}
+                  </button>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <PositionBadge position={player.position} />
+                    <span className="text-[11px] text-muted-foreground font-medium">{player.team || "FA"}</span>
                   </div>
-
-                  <Sep />
-
-                  {/* Rank & fantasy points */}
-                  <div className="w-[85px] shrink-0 flex flex-col items-center justify-center px-1.5">
-                    <span className={cn(
-                      "text-xl font-extrabold leading-none tracking-tight",
-                      positionColors[player.position] || "text-muted-foreground"
-                    )}>
-                      {positionRank}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/70 mt-0.5">#{player.rank} OVR</span>
-                    <div className="flex flex-col items-center mt-2">
-                      <span className="text-sm font-bold tabular-nums leading-none">{stats?.pointsPerGame?.toFixed(1) ?? "-"}</span>
-                      <span className="text-[8px] text-muted-foreground/60 uppercase tracking-wider mt-0.5">PPG</span>
-                    </div>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[10px] text-muted-foreground/70 tabular-nums">{stats?.fantasyPoints?.toFixed(1) ?? "-"} pts</span>
-                      <span className="text-[10px] text-muted-foreground/50">·</span>
-                      <span className="text-[10px] text-muted-foreground/70 tabular-nums">{stats?.gamesPlayed ?? "-"}G</span>
-                    </div>
-                  </div>
-
-                  <Sep />
-
-                  {/* Main stats */}
-                  <div className="shrink-0 flex items-center px-2.5">
-                    <StatBlock label={main.label} row1={main.row1} row2={main.row2} stats={stats} />
-                  </div>
-
-                  <Sep />
-
-                  {/* Secondary stats */}
-                  <div className="shrink-0 flex items-center px-2.5">
-                    <StatBlock label={sec.label} row1={sec.row1} row2={sec.row2} stats={stats} />
-                  </div>
-
-                  <Sep />
-
-                  {/* Usage bars */}
-                  <div className="shrink-0 flex items-center px-2.5">
-                    <UsageBlock stats={stats} position={player.position} />
-                  </div>
-
-                  <Sep />
-
-                  {/* Team offense */}
-                  <div className="shrink-0 flex items-center px-2.5">
-                    <TeamBlock teamStats={teamOffense} />
-                  </div>
-
-                  {/* Spacer for future content */}
-                  <div className="flex-1" />
+                  {bioLine && (
+                    <div className="text-[10px] text-muted-foreground/60 mt-1 truncate leading-tight">{bioLine}</div>
+                  )}
                 </div>
 
-                {/* Inset horizontal separator */}
-                <div className="mx-3 h-px bg-border/40" />
+                <Sep />
 
-                {/* Notes row */}
-                <div className="shrink-0 flex items-center px-3 py-1">
-                  <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider shrink-0 font-semibold mr-2">
-                    NOTE
+                {/* Rank & fantasy points */}
+                <div className="w-[85px] shrink-0 flex flex-col items-center justify-center px-1.5">
+                  <span className={cn(
+                    "text-xl font-extrabold leading-none tracking-tight",
+                    positionColors[player.position] || "text-muted-foreground"
+                  )}>
+                    {positionRank}
                   </span>
-                  <NoteEditor
-                    note={player.note}
-                    onSave={(val) => onNoteChange(player.playerId, val)}
-                  />
+                  <span className="text-[10px] text-muted-foreground/70 mt-0.5">#{player.rank} OVR</span>
+                  <div className="flex flex-col items-center mt-2">
+                    <span className="text-sm font-bold tabular-nums leading-none">{stats?.pointsPerGame?.toFixed(1) ?? "-"}</span>
+                    <span className="text-[8px] text-muted-foreground/60 uppercase tracking-wider mt-0.5">PPG</span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums">{stats?.fantasyPoints?.toFixed(1) ?? "-"} pts</span>
+                    <span className="text-[10px] text-muted-foreground/50">·</span>
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums">{stats?.gamesPlayed ?? "-"}G</span>
+                  </div>
                 </div>
+
+                <Sep />
+
+                {/* Main stats */}
+                <div className="shrink-0 flex items-center px-2.5">
+                  <StatBlock label={main.label} row1={main.row1} row2={main.row2} stats={stats} />
+                </div>
+
+                <Sep />
+
+                {/* Secondary stats */}
+                <div className="shrink-0 flex items-center px-2.5">
+                  <StatBlock label={sec.label} row1={sec.row1} row2={sec.row2} stats={stats} />
+                </div>
+
+                <Sep />
+
+                {/* Usage bars */}
+                <div className="shrink-0 flex items-center px-2.5">
+                  <UsageBlock stats={stats} position={player.position} />
+                </div>
+
+                <Sep />
+
+                {/* Team offense */}
+                <div className="shrink-0 flex items-center px-2.5">
+                  <TeamBlock teamStats={teamOffense} />
+                </div>
+
+                {/* Spacer for future content */}
+                <div className="flex-1" />
               </div>
+
             </div>
           </div>
         </div>
@@ -644,67 +549,64 @@ export function CardItemOverlay({ player, positionRank, stats }: {
   const sec = getSecDefs(player.position)
 
   return (
-    <div
-      className="card-chamfer"
-      style={{ clipPath: CHAMFER_OUTER, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25))" }}
-    >
-      <div className="m-[4px] overflow-hidden" style={{ clipPath: CHAMFER_INNER }}>
-        <div className="flex min-h-[110px]">
-          {/* Headshot */}
-          <div className="w-[110px] shrink-0 self-stretch relative overflow-hidden bg-muted/10">
-            {player.headshotUrl ? (
-              <img src={player.headshotUrl} alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
-            ) : <div className="absolute inset-0 bg-muted/15" />}
-            <div className="absolute inset-y-0 left-0 w-6 flex items-center justify-center text-white/80 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.6))]">
-              <GripVertical className="h-4 w-4" />
+    <div className="bg-background border border-border shadow-lg">
+      <div className="flex min-h-[110px]">
+        {/* Grip / rank area */}
+        <div className="w-10 shrink-0 flex items-center justify-center">
+          <span className="text-sm font-medium text-muted-foreground">{player.rank}</span>
+        </div>
+
+        {/* Headshot */}
+        <div className="w-[110px] shrink-0 self-stretch relative overflow-hidden">
+          {player.headshotUrl ? (
+            <img src={player.headshotUrl} alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
+          ) : <div className="absolute inset-0" />}
+        </div>
+
+        {/* Right side */}
+        <div className="flex-1 flex items-stretch min-w-0">
+          {/* Identity */}
+          <div className="w-[155px] shrink-0 flex flex-col justify-center px-3 min-w-0">
+            <span className="font-bold text-[15px] uppercase truncate leading-tight">{player.name}</span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <PositionBadge position={player.position} />
+              <span className="text-[11px] text-muted-foreground font-medium">{player.team || "FA"}</span>
             </div>
           </div>
 
-          {/* Right side */}
-          <div className="flex-1 flex items-stretch min-w-0">
-            {/* Identity */}
-            <div className="w-[155px] shrink-0 flex flex-col justify-center px-3 min-w-0">
-              <span className="font-bold text-[15px] uppercase truncate leading-tight">{player.name}</span>
-              <div className="flex items-center gap-1.5 mt-1">
-                <PositionBadge position={player.position} />
-                <span className="text-[11px] text-muted-foreground font-medium">{player.team || "FA"}</span>
-              </div>
+          <Sep />
+
+          {/* Rank */}
+          <div className="w-[85px] shrink-0 flex flex-col items-center justify-center px-1.5">
+            <span className={cn("text-xl font-extrabold leading-none tracking-tight", positionColors[player.position])}>
+              {positionRank}
+            </span>
+            <span className="text-[10px] text-muted-foreground/70 mt-0.5">#{player.rank} OVR</span>
+            <div className="flex flex-col items-center mt-2">
+              <span className="text-sm font-bold tabular-nums leading-none">{stats?.pointsPerGame?.toFixed(1) ?? "-"}</span>
+              <span className="text-[8px] text-muted-foreground/60 uppercase tracking-wider mt-0.5">PPG</span>
             </div>
+          </div>
 
-            <Sep />
+          <Sep />
 
-            {/* Rank */}
-            <div className="w-[85px] shrink-0 flex flex-col items-center justify-center px-1.5">
-              <span className={cn("text-xl font-extrabold leading-none tracking-tight", positionColors[player.position])}>
-                {positionRank}
-              </span>
-              <span className="text-[10px] text-muted-foreground/70 mt-0.5">#{player.rank} OVR</span>
-              <div className="flex flex-col items-center mt-2">
-                <span className="text-sm font-bold tabular-nums leading-none">{stats?.pointsPerGame?.toFixed(1) ?? "-"}</span>
-                <span className="text-[8px] text-muted-foreground/60 uppercase tracking-wider mt-0.5">PPG</span>
-              </div>
-            </div>
+          {/* Main stats */}
+          <div className="shrink-0 flex items-center px-2.5">
+            <StatBlock label={main.label} row1={main.row1} row2={main.row2} stats={stats} />
+          </div>
 
-            <Sep />
+          <Sep />
 
-            {/* Main stats */}
-            <div className="shrink-0 flex items-center px-2.5">
-              <StatBlock label={main.label} row1={main.row1} row2={main.row2} stats={stats} />
-            </div>
+          {/* Secondary stats */}
+          <div className="shrink-0 flex items-center px-2.5">
+            <StatBlock label={sec.label} row1={sec.row1} row2={sec.row2} stats={stats} />
+          </div>
 
-            <Sep />
+          <Sep />
 
-            {/* Secondary stats */}
-            <div className="shrink-0 flex items-center px-2.5">
-              <StatBlock label={sec.label} row1={sec.row1} row2={sec.row2} stats={stats} />
-            </div>
-
-            <Sep />
-
-            {/* Usage bars */}
-            <div className="shrink-0 flex items-center px-2.5">
-              <UsageBlock stats={stats} position={player.position} />
-            </div>
+          {/* Usage bars */}
+          <div className="shrink-0 flex items-center px-2.5">
+            <UsageBlock stats={stats} position={player.position} />
           </div>
         </div>
       </div>
@@ -715,7 +617,7 @@ export function CardItemOverlay({ player, positionRank, stats }: {
 export function CardTierOverlay({ tier, index }: { tier: TierSeparator; index: number }) {
   const color = tier.color || generateTierColor(index)
   return (
-    <div className="flex items-center gap-2 px-4 h-7 bg-background border border-border shadow-lg">
+    <div className="flex items-center gap-2 px-4 h-7 bg-background shadow-lg">
       <div className="flex-1 h-[3px]" style={{ backgroundColor: color }} />
       <span className="text-[0.75rem] font-bold whitespace-nowrap px-2" style={{ color }}>{tier.label}</span>
       <div className="flex-1 h-[3px]" style={{ backgroundColor: color }} />
@@ -746,14 +648,13 @@ interface CardViewProps {
   onRemovePlayer?: (player: RankedPlayer) => void
   onTierRename: (tierId: string, newLabel: string) => void
   onTierRemove: (tier: TierSeparator) => void
-  onNoteChange: (playerId: string, note: string) => void
   className?: string
 }
 
 export function CardView({
   displayItems, allPlayers, playerStats, rosterInfo, teamStats, tierIndexMap,
   isPlacingTier, selectedPlayerIds, onPlayerClick, onPlayerSelect, onBatchSelect,
-  onMoveUp, onMoveDown, onRemovePlayer, onTierRename, onTierRemove, onNoteChange, className,
+  onMoveUp, onMoveDown, onRemovePlayer, onTierRename, onTierRemove, className,
 }: CardViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -766,15 +667,27 @@ export function CardView({
   const positionRanks = useMemo(() => computePositionRanks(allPlayers), [allPlayers])
   const sortableItems = useMemo(() => displayItems.map(getItemId), [displayItems])
 
+  const virtualizer = useVirtualizer({
+    count: displayItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => displayItems[index]?.type === "tier" ? 40 : 110,
+    overscan: 5,
+  })
+  const virtualRows = virtualizer.getVirtualItems()
+
   return (
     <div
       ref={scrollRef}
-      className={cn("border overflow-auto max-h-[calc(100vh-320px)] bg-background rounded-md relative", className)}
+      className={cn("border overflow-auto max-h-[calc(100vh-320px)] bg-background relative", className)}
     >
       {selectionBoxStyle && <div ref={selectionBoxRef} style={selectionBoxStyle} />}
-      <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
-        <div className="flex flex-col gap-2 p-2">
-          {displayItems.map((item, index) => {
+      <SortableContext items={sortableItems} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualRows.length > 0 && virtualRows[0].start > 0 && (
+            <div style={{ height: virtualRows[0].start }} />
+          )}
+          {virtualRows.map((virtualRow) => {
+            const item = displayItems[virtualRow.index]
             if (item.type === "tier") {
               return (
                 <CardTierSeparator
@@ -785,6 +698,7 @@ export function CardView({
               )
             }
             const player = item.data
+            const displayIndex = virtualRow.index
             return (
               <CardItem
                 key={player.playerId} player={player}
@@ -797,11 +711,14 @@ export function CardView({
                 onClick={onPlayerClick}
                 onSelect={isPlacingTier ? onPlayerClick : onPlayerSelect}
                 onMoveUp={onMoveUp} onMoveDown={onMoveDown}
-                onRemove={onRemovePlayer} onNoteChange={onNoteChange}
-                canMoveUp={index > 0} canMoveDown={index < displayItems.length - 1}
+                onRemove={onRemovePlayer}
+                canMoveUp={displayIndex > 0} canMoveDown={displayIndex < displayItems.length - 1}
               />
             )
           })}
+          {virtualRows.length > 0 && (
+            <div style={{ height: virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end }} />
+          )}
         </div>
       </SortableContext>
     </div>
