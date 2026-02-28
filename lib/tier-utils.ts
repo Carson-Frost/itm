@@ -1,19 +1,61 @@
 import { RankedPlayer, TierSeparator, DisplayItem } from "@/lib/types/ranking-schemas"
 
-// CSS variable names for tier colors, cycling with modulo for >8 tiers
-export const tierColors = [
-  "var(--tier-1)",
-  "var(--tier-2)",
-  "var(--tier-3)",
-  "var(--tier-4)",
-  "var(--tier-5)",
-  "var(--tier-6)",
-  "var(--tier-7)",
-  "var(--tier-8)",
+// Curated OKLCH colors for the first 8 tiers, then golden angle distribution
+const curatedHues: [number, number, number][] = [
+  [0.72, 0.16, 85],   // 1: Gold
+  [0.70, 0.18, 350],  // 2: Pink
+  [0.55, 0.20, 300],  // 3: Purple
+  [0.58, 0.18, 240],  // 4: Blue
+  [0.62, 0.17, 155],  // 5: Green
+  [0.78, 0.16, 95],   // 6: Yellow
+  [0.68, 0.18, 55],   // 7: Orange
+  [0.58, 0.22, 25],   // 8: Red
 ]
+const GOLDEN_ANGLE = 137.508
 
-export function getTierColor(index: number): string {
-  return tierColors[index % tierColors.length]
+export function generateTierColor(index: number): string {
+  if (index < curatedHues.length) {
+    const [l, c, h] = curatedHues[index]
+    return `oklch(${l} ${c} ${h})`
+  }
+  const hue = ((index - curatedHues.length + 1) * GOLDEN_ANGLE + 200) % 360
+  return `oklch(0.65 0.15 ${hue})`
+}
+
+// Backfill persisted colors onto legacy tiers that don't have them.
+// Uses each tier's sorted position index as its hueIndex so colors are
+// stable even when new tiers are inserted between existing ones.
+// Returns { tiers, hueIndex } where hueIndex is the next available slot.
+export function backfillTierColors(
+  tiers: TierSeparator[],
+  currentHueIndex: number
+): { tiers: TierSeparator[]; hueIndex: number } {
+  const sorted = [...tiers].sort((a, b) => a.afterRank - b.afterRank)
+  let nextHue = currentHueIndex
+  const filled = sorted.map((tier, i) => {
+    if (tier.color) return tier
+    // Assign a color from the position index for legacy data
+    const color = generateTierColor(i)
+    nextHue = Math.max(nextHue, i + 1)
+    return { ...tier, color, colorCustomized: false }
+  })
+  return { tiers: filled, hueIndex: nextHue }
+}
+
+export function isDefaultTierName(label: string): boolean {
+  return /^Tier \d+$/.test(label)
+}
+
+// Recalculate default tier names after reorder/add/remove.
+// Custom-named tiers are left untouched.
+export function recalcDefaultNames(tiers: TierSeparator[]): TierSeparator[] {
+  const sorted = [...tiers].sort((a, b) => a.afterRank - b.afterRank)
+  return sorted.map((tier, i) => {
+    if (isDefaultTierName(tier.label)) {
+      return { ...tier, label: `Tier ${i + 1}` }
+    }
+    return tier
+  })
 }
 
 export function isTierId(id: string): boolean {
@@ -67,6 +109,7 @@ export interface TierBucket {
   tierId: string | null
   label: string
   color: string | null
+  colorCustomized: boolean
   players: RankedPlayer[]
 }
 
@@ -75,7 +118,7 @@ export interface TierBucket {
 // including afterRank. Players after the last separator are "Untiered".
 export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): TierBucket[] {
   if (!tiers || tiers.length === 0) {
-    return [{ tierIndex: null, tierId: null, label: "Untiered", color: null, players }]
+    return [{ tierIndex: null, tierId: null, label: "Untiered", color: null, colorCustomized: false, players }]
   }
 
   const sorted = [...tiers].sort((a, b) => a.afterRank - b.afterRank)
@@ -93,11 +136,15 @@ export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): T
       playerIdx++
     }
 
+    // Use persisted color, fall back to position-based generation for legacy data
+    const color = sorted[i].color || generateTierColor(i)
+
     buckets.push({
       tierIndex: i,
       tierId: sorted[i].id,
-      label: `Tier ${i + 1}`,
-      color: getTierColor(i),
+      label: sorted[i].label,
+      color,
+      colorCustomized: sorted[i].colorCustomized ?? false,
       players: tierPlayers,
     })
   }
@@ -109,7 +156,7 @@ export function groupByTiers(players: RankedPlayer[], tiers: TierSeparator[]): T
       remaining.push(players[playerIdx])
       playerIdx++
     }
-    buckets.push({ tierIndex: null, tierId: null, label: "Untiered", color: null, players: remaining })
+    buckets.push({ tierIndex: null, tierId: null, label: "Untiered", color: null, colorCustomized: false, players: remaining })
   }
 
   return buckets
@@ -124,11 +171,18 @@ export function bucketsToData(buckets: TierBucket[]): { players: RankedPlayer[];
     for (const player of bucket.players) {
       merged.push({ type: "player", data: player })
     }
-    // Separator goes AFTER its players — afterRank = rank of last player above
+    // Separator goes AFTER its players — afterRank = rank of last player above.
+    // Preserve color and colorCustomized from the original tier data.
     if (bucket.tierId) {
       merged.push({
         type: "tier",
-        data: { id: bucket.tierId, label: bucket.label, afterRank: 0 },
+        data: {
+          id: bucket.tierId,
+          label: bucket.label,
+          afterRank: 0,
+          color: bucket.color || "",
+          colorCustomized: bucket.colorCustomized,
+        },
       })
     }
   }

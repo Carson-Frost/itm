@@ -16,6 +16,12 @@ export function GET(request: NextRequest) {
       ? parseInt(searchParams.get('season')!)
       : undefined
 
+    // Bulk mode: return all roster data for a season
+    if (!gsisId && season) {
+      const allRosterData = getRosterData({ season })
+      return NextResponse.json({ rosterData: allRosterData })
+    }
+
     if (!gsisId) {
       return NextResponse.json(
         { error: 'gsisId is required' },

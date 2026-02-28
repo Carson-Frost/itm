@@ -1,24 +1,18 @@
 "use client"
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
-import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown, List, LayoutGrid } from "lucide-react"
+import { Search, Check, Loader2, Undo2, Redo2, Plus, X, ArrowUp, ArrowDown, List, LayoutGrid, LayoutList } from "lucide-react"
 import { toast } from "sonner"
 import {
   DndContext,
   DragOverlay,
   closestCenter,
-  pointerWithin,
-  rectIntersection,
-  getFirstCollision,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragStartEvent,
   DragEndEvent,
-  DragOverEvent,
-  CollisionDetection,
-  UniqueIdentifier,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -46,9 +40,8 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserRanking, RankedPlayer, TierSeparator, FantasyPosition, DisplayItem } from "@/lib/types/ranking-schemas"
-import { mergeItems, splitItems, getItemId, groupByTiers, bucketsToData, TierBucket } from "@/lib/tier-utils"
-import { getBucketContainerId } from "./tier-list-view"
-import { Player, Position } from "@/lib/mock-fantasy-data"
+import { mergeItems, splitItems, getItemId, groupByTiers, bucketsToData, TierBucket, generateTierColor, recalcDefaultNames, backfillTierColors } from "@/lib/tier-utils"
+import { Player, Position } from "@/lib/types/player"
 import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
 import { PlayerCard } from "@/app/fantasy/charts/components/player-card"
 import { RankingHeader } from "./ranking-header"
@@ -56,16 +49,23 @@ import { SettingsDialog } from "./settings-dialog"
 import { PlayerRow, PlayerRowOverlay } from "./player-row"
 import { TierRow, TierRowOverlay } from "./tier-row"
 import { RemoveTierDialog } from "./remove-tier-dialog"
-import { TierListView, TierPlayerCardOverlay } from "./tier-list-view"
+import { RemovePlayerDialog } from "./remove-player-dialog"
+import { AddPlayerDrawer } from "./add-player-drawer"
+import { TierListView } from "./tier-list-view"
+import { CardView, CardItemOverlay, CardTierOverlay } from "./card-view"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { useRelativeTime } from "@/hooks/use-relative-time"
+import { useHotkeys } from "@/hooks/use-hotkeys"
+import { Kbd } from "@/components/ui/kbd"
 
 interface RankingEditorProps {
   ranking: UserRanking
   saveStatus: "saved" | "saving" | "error"
+  lastSavedAt: Date | null
   onSettingsSave: (updates: Partial<UserRanking>) => void
   onPlayersChange: (players: RankedPlayer[]) => void
-  onTiersChange: (tiers: TierSeparator[]) => void
+  onTiersChange: (tiers: TierSeparator[], hueIndex?: number) => void
 }
 
 interface PlayerStatsMap {
@@ -88,7 +88,41 @@ interface PlayerStatsMap {
     receptions?: number
     receivingYards?: number
     receivingTDs?: number
+    // Advanced
+    targetShare?: number
+    airYardsShare?: number
+    wopr?: number
+    racr?: number
+    receivingEpa?: number
+    rushingEpa?: number
+    passingEpa?: number
+    passingCpoe?: number
+    receivingYac?: number
+    passingYac?: number
+    receivingFirstDowns?: number
+    rushingFirstDowns?: number
+    passingFirstDowns?: number
   }
+}
+
+interface RosterInfoMap {
+  [playerId: string]: {
+    height?: number
+    weight?: number
+    college?: string
+    yearsExp?: number
+    jerseyNumber?: number
+  }
+}
+
+interface TeamOffenseStats {
+  passYards: number
+  rushYards: number
+  totalTDs: number
+}
+
+interface TeamStatsMap {
+  [team: string]: TeamOffenseStats
 }
 
 // Column definitions matching fantasy charts
@@ -145,6 +179,7 @@ function getColumnGroupOrder(position: FantasyPosition | "All") {
 }
 
 const MAX_HISTORY = 50
+const emptySet = new Set<string>()
 
 function toPlayer(ranked: RankedPlayer): Player {
   return {
@@ -165,14 +200,18 @@ function toPlayer(ranked: RankedPlayer): Player {
 export function RankingEditor({
   ranking,
   saveStatus,
+  lastSavedAt,
   onSettingsSave,
   onPlayersChange,
   onTiersChange,
 }: RankingEditorProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set())
   const [latestSeason, setLatestSeason] = useState(2025)
   const [playerStats, setPlayerStats] = useState<PlayerStatsMap>({})
+  const [rosterInfo, setRosterInfo] = useState<RosterInfoMap>({})
+  const [teamStats, setTeamStats] = useState<TeamStatsMap>({})
   const [searchQuery, setSearchQuery] = useState("")
   const [filterPosition, setFilterPosition] = useState<FantasyPosition | "All">(
     ranking.positions.length === 1 ? ranking.positions[0] : "All"
@@ -180,12 +219,11 @@ export function RankingEditor({
   const [filterTeam, setFilterTeam] = useState<string>("ALL")
   const [activeId, setActiveId] = useState<string | null>(null)
   const [removeTierTarget, setRemoveTierTarget] = useState<TierSeparator | null>(null)
+  const [addPlayerOpen, setAddPlayerOpen] = useState(false)
+  const [removePlayerTarget, setRemovePlayerTarget] = useState<RankedPlayer | null>(null)
   const [isPlacingTier, setIsPlacingTier] = useState(false)
-  const [view, setView] = useState<"list" | "tierlist">("list")
-  // Tracks which tier containers have their cards enabled as droppable targets.
-  // Cards in inactive tiers are draggable but not droppable, so dnd-kit skips
-  // measuring them — reducing initial drag measurements from ~200+ to ~8.
-  const [activeTierIds, setActiveTierIds] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<"row" | "tier" | "card">("row")
+  const savedTimeLabel = useRelativeTime(lastSavedAt)
 
   // Undo/Redo history
   const [history, setHistory] = useState<RankedPlayer[][]>([])
@@ -268,9 +306,60 @@ export function RankingEditor({
               receptions: player.receptions,
               receivingYards: player.receivingYards,
               receivingTDs: player.receivingTDs,
+              // Advanced
+              targetShare: player.targetShare,
+              airYardsShare: player.airYardsShare,
+              wopr: player.wopr,
+              racr: player.racr,
+              receivingEpa: player.receivingEpa,
+              rushingEpa: player.rushingEpa,
+              passingEpa: player.passingEpa,
+              passingCpoe: player.passingCpoe,
+              receivingYac: player.receivingYac,
+              passingYac: player.passingYac,
+              receivingFirstDowns: player.receivingFirstDowns,
+              rushingFirstDowns: player.rushingFirstDowns,
+              passingFirstDowns: player.passingFirstDowns,
             }
           }
           setPlayerStats(statsMap)
+
+          // Compute team offense totals
+          const teamMap: TeamStatsMap = {}
+          for (const player of statsData.players as Player[]) {
+            if (!player.team) continue
+            if (!teamMap[player.team]) {
+              teamMap[player.team] = { passYards: 0, rushYards: 0, totalTDs: 0 }
+            }
+            const t = teamMap[player.team]
+            t.passYards += player.passingYards ?? 0
+            t.rushYards += player.rushingYards ?? 0
+            t.totalTDs += (player.passingTDs ?? 0) + (player.rushingTDs ?? 0) + (player.receivingTDs ?? 0)
+          }
+          setTeamStats(teamMap)
+
+          // Fetch bulk roster data
+          try {
+            const rosterRes = await fetch(`/api/fantasy/roster-data?season=${data.availableSeasons[0]}`)
+            const rosterData = await rosterRes.json()
+            if (Array.isArray(rosterData.rosterData)) {
+              const rosterMap: RosterInfoMap = {}
+              for (const r of rosterData.rosterData) {
+                if (r.gsis_id) {
+                  rosterMap[r.gsis_id] = {
+                    height: r.height,
+                    weight: r.weight,
+                    college: r.college,
+                    yearsExp: r.years_exp,
+                    jerseyNumber: r.jersey_number,
+                  }
+                }
+              }
+              setRosterInfo(rosterMap)
+            }
+          } catch {
+            // Roster data is supplementary, don't block on failure
+          }
         }
       } catch {
         // Handle silently
@@ -278,7 +367,8 @@ export function RankingEditor({
     }
 
     fetchStats()
-  }, [ranking.players])
+   
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -291,89 +381,11 @@ export function RankingEditor({
     })
   )
 
-  // Multi-container drag state for tier list view.
-  // During a drag, buckets are updated live (onDragOver moves players
-  // between tiers). On drop, buckets are converted back to a flat list.
-  const [dragBuckets, setDragBuckets] = useState<TierBucket[] | null>(null)
-
+  // Tier list buckets for display
   const currentBuckets = useMemo(
-    () => dragBuckets ?? groupByTiers(ranking.players || [], ranking.tiers || []),
-    [dragBuckets, ranking.players, ranking.tiers]
+    () => groupByTiers(ranking.players || [], ranking.tiers || []),
+    [ranking.players, ranking.tiers]
   )
-
-  // Maps playerId → containerId for the collision detection function
-  const bucketMapRef = useRef<Map<string, string>>(new Map())
-  bucketMapRef.current = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const bucket of currentBuckets) {
-      const cid = getBucketContainerId(bucket)
-      for (const player of bucket.players) {
-        map.set(player.playerId, cid)
-      }
-    }
-    return map
-  }, [currentBuckets])
-
-  // Refs from the official @dnd-kit multi-container pattern:
-  // lastOverId caches the previous collision target so layout shifts
-  // during cross-container moves don't cause overId to go null.
-  // recentlyMovedToNewContainer signals the collision detection to
-  // use the cached value during the layout reflow frame.
-  const lastOverId = useRef<UniqueIdentifier | null>(null)
-  const recentlyMovedToNewContainer = useRef(false)
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      recentlyMovedToNewContainer.current = false
-    })
-  }, [dragBuckets])
-
-  // Finds which container a player or container ID belongs to
-  const findContainer = useCallback((id: string): string | undefined => {
-    if (id.startsWith("tier-bucket-")) return id
-    return bucketMapRef.current.get(id)
-  }, [])
-
-  // Collision detection adapted from the official @dnd-kit multi-container example.
-  // pointerWithin finds intersecting droppables, with rectIntersection as fallback.
-  // When a container is hit, drills down to the closest item within it.
-  // Empty containers return the container ID directly.
-  // Caches lastOverId to survive layout shifts after cross-container moves.
-  const tierListCollision = useCallback<CollisionDetection>((args) => {
-    const pointerIntersections = pointerWithin(args)
-    const intersections =
-      pointerIntersections.length > 0 ? pointerIntersections : rectIntersection(args)
-
-    let overId = getFirstCollision(intersections, "id")
-
-    if (overId != null) {
-      // If overId is a container, drill down to closest item within it
-      if (String(overId).startsWith("tier-bucket-")) {
-        const containerItems = args.droppableContainers.filter(
-          (c) =>
-            c.id !== overId &&
-            bucketMapRef.current.get(String(c.id)) === String(overId)
-        )
-
-        if (containerItems.length > 0) {
-          overId = closestCenter({
-            ...args,
-            droppableContainers: containerItems,
-          })[0]?.id
-        }
-      }
-
-      lastOverId.current = overId
-      return [{ id: overId }]
-    }
-
-    // Layout shift after cross-container move can make overId null
-    if (recentlyMovedToNewContainer.current) {
-      lastOverId.current = activeId
-    }
-
-    return lastOverId.current ? [{ id: lastOverId.current }] : []
-  }, [activeId])
 
   const filteredPlayers = useMemo(() => {
     let players = ranking.players || []
@@ -427,147 +439,50 @@ export function RankingEditor({
     return filtered
   }, [currentBuckets, hasFilters, filteredPlayers])
 
-  // Snapshot of buckets at drag start for cancel recovery
-  const clonedBuckets = useRef<TierBucket[] | null>(null)
+  // Tier view reorder: called by TierListView's custom drag system
+  const handleTierReorder = useCallback((finalBuckets: TierBucket[]) => {
+    const { players, tiers } = bucketsToData(finalBuckets)
+    handlePlayersChangeWithHistory(players)
+    onTiersChange(recalcDefaultNames(tiers))
+  }, [handlePlayersChangeWithHistory, onTiersChange])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const id = event.active.id as string
-    setActiveId(id)
-    if (view === "tierlist") {
-      // Activate the source tier so its cards become droppable targets
-      const sourceContainer = findContainer(id)
-      if (sourceContainer) {
-        setActiveTierIds(new Set([sourceContainer]))
-      }
-      // Snapshot for cancel recovery — don't set dragBuckets yet to avoid
-      // a full re-render on grab. Buckets are lazily created on first
-      // cross-container move in handleDragOver.
-      clonedBuckets.current = currentBuckets.map(b => ({ ...b, players: [...b.players] }))
-    }
-  }, [view, currentBuckets, findContainer])
-
-  // Cross-tier movement during drag (adapted from official @dnd-kit multi-container example)
-  const handleDragOver = useCallback(
-    (event: DragOverEvent) => {
-      if (view !== "tierlist") return
-
-      const { active, over } = event
-      const overId = over?.id
-      if (overId == null) return
-
-      const overContainer = findContainer(String(overId))
-      const activeContainer = findContainer(String(active.id))
-      if (!overContainer || !activeContainer || activeContainer === overContainer) return
-
-      // Activate the hovered tier so its cards become droppable targets
-      // for precise within-tier positioning on subsequent drag events
-      setActiveTierIds(prev => {
-        if (prev.has(overContainer)) return prev
-        const next = new Set(prev)
-        next.add(overContainer)
-        return next
-      })
-
-      setDragBuckets((prev) => {
-        // Lazy init: first cross-container move creates mutable copy
-        const buckets = prev ?? currentBuckets.map(b => ({ ...b, players: [...b.players] }))
-
-        const fromIdx = buckets.findIndex((b) => getBucketContainerId(b) === activeContainer)
-        const toIdx = buckets.findIndex((b) => getBucketContainerId(b) === overContainer)
-        if (fromIdx === -1 || toIdx === -1) return buckets
-
-        const activeItems = buckets[fromIdx].players
-        const overItems = buckets[toIdx].players
-        const activeIndex = activeItems.findIndex((p) => p.playerId === String(active.id))
-        const overIndex = overItems.findIndex((p) => p.playerId === String(overId))
-
-        let newIndex: number
-
-        if (String(overId).startsWith("tier-bucket-")) {
-          // Dropping on container itself (empty tier)
-          newIndex = overItems.length
-        } else {
-          // Insert above or below the target card based on pointer position
-          const isBelowOverItem =
-            over &&
-            active.rect.current.translated &&
-            active.rect.current.translated.top > over.rect.top + over.rect.height
-
-          const modifier = isBelowOverItem ? 1 : 0
-          newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length
-        }
-
-        // Skip if already at the target position (prevents oscillation at tier edges)
-        if (fromIdx === toIdx && activeIndex === newIndex) return buckets
-
-        recentlyMovedToNewContainer.current = true
-
-        // Only clone the two affected buckets — unchanged tiers keep stable
-        // references so memo prevents their rows from re-rendering
-        const newBuckets = [...buckets]
-        newBuckets[fromIdx] = { ...buckets[fromIdx], players: [...buckets[fromIdx].players] }
-        if (fromIdx !== toIdx) {
-          newBuckets[toIdx] = { ...buckets[toIdx], players: [...buckets[toIdx].players] }
-        }
-
-        const [player] = newBuckets[fromIdx].players.splice(activeIndex, 1)
-        newBuckets[toIdx].players.splice(newIndex, 0, player)
-
-        return newBuckets
-      })
-    },
-    [view, findContainer, currentBuckets]
-  )
+    setActiveId(event.active.id as string)
+  }, [])
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
       setActiveId(null)
-      setActiveTierIds(new Set())
-      clonedBuckets.current = null
 
-      if (!over) {
-        setDragBuckets(null)
-        return
-      }
+      if (!over) return
 
-      // Tier list view: persist the bucket state built up during drag
-      if (view === "tierlist") {
-        const activeContainer = findContainer(String(active.id))
-        const overContainer = findContainer(String(over.id))
-        const finalBuckets = dragBuckets ?? currentBuckets
-        setDragBuckets(null)
+      // Card view: uses same merged display list as row view (supports tiers)
+      if (view === "card") {
+        // Search/team filter → sparse results, hide tiers, operate on flat list
+        if (searchQuery || filterTeam !== "ALL") {
+          const allPlayers = ranking.players || []
+          const oldIndex = allPlayers.findIndex((p) => p.playerId === active.id)
+          const newIndex = allPlayers.findIndex((p) => p.playerId === over.id)
+          if (oldIndex === -1 || newIndex === -1) return
 
-        if (!activeContainer || !overContainer) return
-
-        // Within-container reorder (cross-container was handled by onDragOver)
-        if (activeContainer === overContainer) {
-          const bucketIdx = finalBuckets.findIndex(
-            (b) => getBucketContainerId(b) === activeContainer
+          const newPlayers = arrayMove(allPlayers, oldIndex, newIndex).map(
+            (player, idx) => ({ ...player, rank: idx + 1 })
           )
-          if (bucketIdx === -1) return
-
-          const bucket = finalBuckets[bucketIdx]
-          const activeIdx = bucket.players.findIndex((p) => p.playerId === String(active.id))
-          const overIdx = bucket.players.findIndex((p) => p.playerId === String(over.id))
-
-          if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
-            const reordered = finalBuckets.map((b, i) =>
-              i === bucketIdx
-                ? { ...b, players: arrayMove(b.players, activeIdx, overIdx) }
-                : b
-            )
-            const { players, tiers } = bucketsToData(reordered)
-            handlePlayersChangeWithHistory(players)
-            onTiersChange(tiers)
-            return
-          }
+          handlePlayersChangeWithHistory(newPlayers)
+          return
         }
 
-        // Cross-container or same position — persist current bucket state
-        const { players, tiers } = bucketsToData(finalBuckets)
+        // Merged list with tiers
+        const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+        const oldIndex = merged.findIndex((item) => getItemId(item) === active.id)
+        const newIndex = merged.findIndex((item) => getItemId(item) === over.id)
+        if (oldIndex === -1 || newIndex === -1) return
+
+        const reordered = arrayMove(merged, oldIndex, newIndex)
+        const { players, tiers } = splitItems(reordered)
         handlePlayersChangeWithHistory(players)
-        onTiersChange(tiers)
+        onTiersChange(recalcDefaultNames(tiers))
         return
       }
 
@@ -595,28 +510,55 @@ export function RankingEditor({
       const { players, tiers } = splitItems(reordered)
 
       handlePlayersChangeWithHistory(players)
-      onTiersChange(tiers)
+      onTiersChange(recalcDefaultNames(tiers))
     },
-    [view, dragBuckets, currentBuckets, findContainer, ranking.players, ranking.tiers, searchQuery, filterTeam, handlePlayersChangeWithHistory, onTiersChange]
+    [view, ranking.players, ranking.tiers, searchQuery, filterTeam, handlePlayersChangeWithHistory, onTiersChange]
   )
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null)
-    setActiveTierIds(new Set())
-    setDragBuckets(null)
-    clonedBuckets.current = null
   }, [])
 
   const handlePlayerClick = useCallback((ranked: RankedPlayer) => {
     setSelectedPlayer(toPlayer(ranked))
   }, [])
 
-  const handlePlayerSelect = useCallback((ranked: RankedPlayer) => {
-    setSelectedPlayerId((prev) => prev === ranked.playerId ? null : ranked.playerId)
+  const handleBatchSelect = useCallback((ids: Set<string>) => {
+    setSelectedPlayerIds(ids)
+  }, [])
+
+  const handlePlayerSelect = useCallback((ranked: RankedPlayer, ctrlKey?: boolean) => {
+    setSelectedPlayerIds((prev) => {
+      if (ctrlKey) {
+        const next = new Set(prev)
+        if (next.has(ranked.playerId)) {
+          next.delete(ranked.playerId)
+        } else {
+          next.add(ranked.playerId)
+        }
+        return next
+      }
+      // Normal click: toggle single selection
+      if (prev.size === 1 && prev.has(ranked.playerId)) {
+        return new Set()
+      }
+      return new Set([ranked.playerId])
+    })
   }, [])
 
   const columnGroups = useMemo(() => getColumnGroupOrder(filterPosition), [filterPosition])
   const hasStats = Object.keys(playerStats).length > 0
+
+  // Position rank map for card view overlay
+  const positionRankMap = useMemo(() => {
+    const map = new Map<string, string>()
+    const counts: Record<string, number> = {}
+    for (const p of (ranking.players || [])) {
+      counts[p.position] = (counts[p.position] || 0) + 1
+      map.set(p.playerId, `${p.position}${counts[p.position]}`)
+    }
+    return map
+  }, [ranking.players])
 
   // Build display items: always merge players with tiers, then filter out
   // non-matching players while keeping tier separators in place. When search
@@ -649,6 +591,35 @@ export function RankingEditor({
     return firstPlayerIdx > 0 ? kept.slice(firstPlayerIdx) : kept
   }, [hasFilters, filteredPlayers, ranking.players, ranking.tiers, searchQuery, filterTeam])
 
+  // Move a specific player up/down via context menu. Temporarily selects the
+  // player so handleMovePlayer can find it, then performs the move.
+  const handleContextMoveUp = useCallback((player: RankedPlayer) => {
+    setSelectedPlayerIds(new Set([player.playerId]))
+    // Inline the move logic directly using the player's position in displayItems.
+    const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+    const currentIndex = merged.findIndex(
+      (item) => item.type === "player" && item.data.playerId === player.playerId
+    )
+    if (currentIndex <= 0) return
+    const reordered = arrayMove(merged, currentIndex, currentIndex - 1)
+    const { players, tiers } = splitItems(reordered)
+    handlePlayersChangeWithHistory(players)
+    onTiersChange(recalcDefaultNames(tiers))
+  }, [ranking.players, ranking.tiers, handlePlayersChangeWithHistory, onTiersChange])
+
+  const handleContextMoveDown = useCallback((player: RankedPlayer) => {
+    setSelectedPlayerIds(new Set([player.playerId]))
+    const merged = mergeItems(ranking.players || [], ranking.tiers || [])
+    const currentIndex = merged.findIndex(
+      (item) => item.type === "player" && item.data.playerId === player.playerId
+    )
+    if (currentIndex === -1 || currentIndex >= merged.length - 1) return
+    const reordered = arrayMove(merged, currentIndex, currentIndex + 1)
+    const { players, tiers } = splitItems(reordered)
+    handlePlayersChangeWithHistory(players)
+    onTiersChange(recalcDefaultNames(tiers))
+  }, [ranking.players, ranking.tiers, handlePlayersChangeWithHistory, onTiersChange])
+
   // Move player up/down in the display list. Operates on the merged list
   // (players + tier separators) so tiers are treated as items that can be
   // stepped over — moving past a tier boundary shifts the separator rather
@@ -657,7 +628,9 @@ export function RankingEditor({
   // with the visible neighbor in the filtered player list.
   const handleMovePlayer = useCallback(
     (direction: "up" | "down") => {
-      if (!selectedPlayerId) return
+      if (selectedPlayerIds.size === 0) return
+      // For move, use first selected player
+      const selectedPlayerId = [...selectedPlayerIds][0]
 
       if (hasFilters) {
         // Filtered view: no tiers visible, swap with visible neighbor
@@ -695,14 +668,15 @@ export function RankingEditor({
       const reordered = arrayMove(merged, currentIndex, targetIndex)
       const { players, tiers } = splitItems(reordered)
       handlePlayersChangeWithHistory(players)
-      onTiersChange(tiers)
+      onTiersChange(recalcDefaultNames(tiers))
     },
-    [selectedPlayerId, hasFilters, ranking.players, ranking.tiers, filteredPlayers, handlePlayersChangeWithHistory, onTiersChange]
+    [selectedPlayerIds, hasFilters, ranking.players, ranking.tiers, filteredPlayers, handlePlayersChangeWithHistory, onTiersChange]
   )
 
-  const selectedDisplayIndex = selectedPlayerId
+  const firstSelectedId = selectedPlayerIds.size > 0 ? [...selectedPlayerIds][0] : null
+  const selectedDisplayIndex = firstSelectedId
     ? displayItems.findIndex(
-        (item) => item.type === "player" && item.data.playerId === selectedPlayerId
+        (item) => item.type === "player" && item.data.playerId === firstSelectedId
       )
     : -1
   const canMoveUp = selectedDisplayIndex > 0
@@ -718,7 +692,7 @@ export function RankingEditor({
   const virtualizer = useVirtualizer({
     count: displayItems.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => displayItems[index]?.type === "tier" ? 32 : 49,
+    estimateSize: (index) => displayItems[index]?.type === "tier" ? 28 : 49,
     overscan: 10,
   })
   const virtualRows = virtualizer.getVirtualItems()
@@ -758,32 +732,129 @@ export function RankingEditor({
 
   // Dismiss toast on unmount
   useEffect(() => {
-    return () => toast.dismiss(placingTierToastId)
+    return () => { toast.dismiss(placingTierToastId) }
   }, [])
 
-  // Place a tier above the selected player
+  // Place a tier above the selected player.
+  // Backfills colors on legacy tiers before adding so position-index
+  // shifts from the insertion don't cause existing tiers to change color.
   const handlePlaceTier = useCallback((player: RankedPlayer) => {
-    const tiers = ranking.tiers || []
+    const raw = ranking.tiers || []
+    const { tiers: filled, hueIndex: baseHue } = backfillTierColors(raw, ranking.hueIndex ?? raw.length)
     const newTier: TierSeparator = {
       id: `tier_${crypto.randomUUID()}`,
-      label: `Tier ${tiers.length + 1}`,
+      label: `Tier ${filled.length + 1}`,
       afterRank: player.rank - 1,
+      color: generateTierColor(baseHue),
+      colorCustomized: false,
     }
-    onTiersChange([...tiers, newTier])
+    const updated = recalcDefaultNames([...filled, newTier])
+    onTiersChange(updated, baseHue + 1)
     setIsPlacingTier(false)
-  }, [ranking.tiers, onTiersChange])
+  }, [ranking.tiers, ranking.hueIndex, onTiersChange])
+
+  // Update a player's note — must avoid undefined (Firestore rejects it)
+  const handleNoteChange = useCallback((playerId: string, note: string) => {
+    const players = (ranking.players || []).map((p) => {
+      if (p.playerId !== playerId) return p
+      if (note) return { ...p, note }
+      // Remove the key entirely instead of setting undefined
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { note: _removed, ...rest } = p
+      return rest as RankedPlayer
+    })
+    handlePlayersChangeWithHistory(players)
+  }, [ranking.players, handlePlayersChangeWithHistory])
 
   // Remove tier after confirmation
   const handleConfirmRemoveTier = useCallback(() => {
     if (!removeTierTarget) return
-    const tiers = (ranking.tiers || []).filter((t) => t.id !== removeTierTarget.id)
-    onTiersChange(tiers)
+    const remaining = (ranking.tiers || []).filter((t) => t.id !== removeTierTarget.id)
+    const { tiers } = backfillTierColors(remaining, ranking.hueIndex ?? remaining.length)
+    onTiersChange(recalcDefaultNames(tiers))
     setRemoveTierTarget(null)
-  }, [removeTierTarget, ranking.tiers, onTiersChange])
+  }, [removeTierTarget, ranking.tiers, ranking.hueIndex, onTiersChange])
+
+  // Rename a tier label
+  const handleTierRename = useCallback((tierId: string, newLabel: string) => {
+    const tiers = (ranking.tiers || []).map((t) =>
+      t.id === tierId ? { ...t, label: newLabel } : t
+    )
+    onTiersChange(tiers)
+  }, [ranking.tiers, onTiersChange])
+
+  // Add player to ranking
+  const handleAddPlayer = useCallback((player: {
+    playerId: string
+    name: string
+    position: FantasyPosition
+    team: string
+    headshotUrl?: string
+  }) => {
+    const players = ranking.players || []
+    const newPlayer: RankedPlayer = {
+      rank: players.length + 1,
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      headshotUrl: player.headshotUrl,
+    }
+    const updated = [...players, newPlayer]
+    handlePlayersChangeWithHistory(updated)
+  }, [ranking.players, handlePlayersChangeWithHistory])
+
+  // Remove player from ranking
+  const handleRemovePlayer = useCallback((player: RankedPlayer) => {
+    setRemovePlayerTarget(player)
+  }, [])
+
+  const handleConfirmRemovePlayer = useCallback(() => {
+    if (!removePlayerTarget) return
+    const players = (ranking.players || [])
+      .filter((p) => p.playerId !== removePlayerTarget.playerId)
+      .map((p, i) => ({ ...p, rank: i + 1 }))
+    handlePlayersChangeWithHistory(players)
+    setRemovePlayerTarget(null)
+    setSelectedPlayerIds(new Set())
+  }, [removePlayerTarget, ranking.players, handlePlayersChangeWithHistory])
+
+  const existingPlayerIds = useMemo(
+    () => new Set((ranking.players || []).map((p) => p.playerId)),
+    [ranking.players]
+  )
+
+  // Hotkeys
+  useHotkeys(useMemo(() => [
+    { key: "z", ctrl: true, handler: handleUndo },
+    { key: "Z", ctrl: true, shift: true, handler: handleRedo },
+    { key: "y", ctrl: true, handler: handleRedo },
+    { key: "ArrowUp", ctrl: true, handler: () => handleMovePlayer("up") },
+    { key: "ArrowDown", ctrl: true, handler: () => handleMovePlayer("down") },
+    { key: "Escape", handler: () => setSelectedPlayerIds(new Set()) },
+    {
+      key: "Delete",
+      handler: () => {
+        if (selectedPlayerIds.size === 0) return
+        const first = [...selectedPlayerIds][0]
+        const player = (ranking.players || []).find((p) => p.playerId === first)
+        if (player) setRemovePlayerTarget(player)
+      },
+    },
+    {
+      key: "Backspace",
+      handler: () => {
+        if (selectedPlayerIds.size === 0) return
+        const first = [...selectedPlayerIds][0]
+        const player = (ranking.players || []).find((p) => p.playerId === first)
+        if (player) setRemovePlayerTarget(player)
+      },
+    },
+  ], [handleUndo, handleRedo, handleMovePlayer, selectedPlayerIds, ranking.players]))
 
   return (
     <div>
-      <RankingHeader ranking={ranking} />
+      <RankingHeader ranking={ranking} onSettingsOpen={() => setSettingsOpen(true)} />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -842,7 +913,9 @@ export function RankingEditor({
             {saveStatus === "saved" && (
               <>
                 <Check className="h-4 w-4 text-green-500" />
-                <span className="hidden sm:inline">Saved</span>
+                <span className="hidden sm:inline">
+                  {savedTimeLabel ? `Saved ${savedTimeLabel}` : "Saved"}
+                </span>
               </>
             )}
             {saveStatus === "error" && (
@@ -862,7 +935,7 @@ export function RankingEditor({
                     <ArrowUp className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Move Up</TooltipContent>
+                <TooltipContent>Move Up <Kbd>Ctrl ↑</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -875,7 +948,7 @@ export function RankingEditor({
                     <ArrowDown className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Move Down</TooltipContent>
+                <TooltipContent>Move Down <Kbd>Ctrl ↓</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -888,7 +961,7 @@ export function RankingEditor({
                     <Undo2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Undo</TooltipContent>
+                <TooltipContent>Undo <Kbd>Ctrl+Z</Kbd></TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -901,7 +974,7 @@ export function RankingEditor({
                     <Redo2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Redo</TooltipContent>
+                <TooltipContent>Redo <Kbd>Ctrl+Shift+Z</Kbd></TooltipContent>
               </Tooltip>
             </div>
           </TooltipProvider>
@@ -922,7 +995,14 @@ export function RankingEditor({
               </>
             )}
           </Button>
-          <SettingsDialog ranking={ranking} onSave={onSettingsSave} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddPlayerOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Player
+          </Button>
         </div>
       </div>
 
@@ -949,58 +1029,117 @@ export function RankingEditor({
           ) : (
             <div />
           )}
-          <div className="flex gap-0.5">
-            <button
-              onClick={() => setView("list")}
-              className={cn(
-                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
-                view === "list"
-                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
-                  : "text-muted-foreground border-transparent hover:text-foreground"
-              )}
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setView("tierlist")}
-              className={cn(
-                "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
-                view === "tierlist"
-                  ? "text-foreground bg-muted dark:bg-input/30 border-border"
-                  : "text-muted-foreground border-transparent hover:text-foreground"
-              )}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-          </div>
+          <TooltipProvider>
+            <div className="flex gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("row")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "row"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Row View</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("tier")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "tier"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Tier View</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setView("card")}
+                    className={cn(
+                      "rounded-t-md rounded-b-none border border-b-0 px-2.5 py-1.5 flex items-center justify-center",
+                      view === "card"
+                        ? "text-foreground bg-muted dark:bg-input/30 border-border"
+                        : "text-muted-foreground border-transparent hover:text-foreground"
+                    )}
+                  >
+                    <LayoutList className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Card View</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       )}
 
       {/* Player Table / Tier List */}
       <DndContext
         sensors={sensors}
-        collisionDetection={view === "tierlist" ? tierListCollision : closestCenter}
+        collisionDetection={closestCenter}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
         {(ranking.players?.length || 0) === 0 ? (
-          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
-            No players found. Try refreshing the page.
+          <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md space-y-3">
+            <p>No players yet. Add players to get started.</p>
+            <Button variant="outline" size="sm" onClick={() => setAddPlayerOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Player
+            </Button>
           </div>
         ) : filteredPlayers.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground border border-dashed rounded-md">
             No players match your filters
           </div>
-        ) : view === "tierlist" ? (
+        ) : view === "tier" ? (
           <TierListView
             buckets={displayBuckets}
-            activeTierIds={activeTierIds}
             isPlacingTier={isPlacingTier}
-            selectedPlayerId={isPlacingTier ? null : selectedPlayerId}
+            selectedPlayerIds={isPlacingTier ? emptySet : selectedPlayerIds}
             onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
             onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+            onTierRename={handleTierRename}
+            onTierRemove={setRemoveTierTarget}
+            onMoveUp={handleContextMoveUp}
+            onMoveDown={handleContextMoveDown}
+            onRemovePlayer={handleRemovePlayer}
+            onReorder={handleTierReorder}
+            className={cn(
+              ranking.positions.length > 1 && "rounded-tl-none",
+              "rounded-tr-none"
+            )}
+          />
+        ) : view === "card" ? (
+          <CardView
+            displayItems={displayItems}
+            allPlayers={ranking.players || []}
+            playerStats={playerStats}
+            rosterInfo={rosterInfo}
+            teamStats={teamStats}
+            tierIndexMap={tierIndexMap}
+            isPlacingTier={isPlacingTier}
+            selectedPlayerIds={isPlacingTier ? emptySet : selectedPlayerIds}
+            onPlayerClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
+            onPlayerSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+            onBatchSelect={handleBatchSelect}
+            onMoveUp={handleContextMoveUp}
+            onMoveDown={handleContextMoveDown}
+            onRemovePlayer={handleRemovePlayer}
+            onTierRename={handleTierRename}
+            onTierRemove={setRemoveTierTarget}
             className={cn(
               ranking.positions.length > 1 && "rounded-tl-none",
               "rounded-tr-none"
@@ -1019,7 +1158,6 @@ export function RankingEditor({
                 <TableHeader className="sticky top-0 z-10 bg-muted">
                   {/* Row 1: Group headers */}
                   <TableRow>
-                    <TableHead className="w-8"></TableHead>
                     <TableHead className="w-12"></TableHead>
                     <TableHead colSpan={3} className="text-center text-xs font-semibold">
                       PLAYER
@@ -1052,7 +1190,6 @@ export function RankingEditor({
                   </TableRow>
                   {/* Row 2: Specific column headers */}
                   <TableRow>
-                    <TableHead className="w-8"></TableHead>
                     <TableHead className="text-center w-12 font-medium">RK</TableHead>
                     <TableHead className="text-center w-48 font-medium">NAME</TableHead>
                     <TableHead className="text-center w-16 font-medium">POS</TableHead>
@@ -1093,20 +1230,27 @@ export function RankingEditor({
                             tier={item.data}
                             index={tierIndexMap.get(item.data.id) ?? 0}
                             onRemove={setRemoveTierTarget}
+                            onRename={handleTierRename}
                           />
                         )
                       }
                       const player = item.data
+                      const playerDisplayIndex = virtualRow.index
                       return (
                         <PlayerRow
                           key={player.playerId}
                           player={player}
                           stats={playerStats[player.playerId]}
                           columnGroups={columnGroups}
-                          isSelected={!isPlacingTier && selectedPlayerId === player.playerId}
+                          isSelected={!isPlacingTier && selectedPlayerIds.has(player.playerId)}
                           isPlacingTier={isPlacingTier}
                           onClick={isPlacingTier ? handlePlaceTier : handlePlayerClick}
                           onSelect={isPlacingTier ? handlePlaceTier : handlePlayerSelect}
+                          onMoveUp={handleContextMoveUp}
+                          onMoveDown={handleContextMoveDown}
+                          onRemove={handleRemovePlayer}
+                          canMoveUp={playerDisplayIndex > 0}
+                          canMoveDown={playerDisplayIndex < displayItems.length - 1}
                         />
                       )
                     })}
@@ -1120,13 +1264,30 @@ export function RankingEditor({
           </>
         )}
         <DragOverlay>
-          {view === "tierlist" && activeId ? (
+          {view === "card" && activeId ? (
             (() => {
+              // Check if it's a tier or player
+              const tierItem = (ranking.tiers || []).find((t) => t.id === activeId)
+              if (tierItem) {
+                return (
+                  <CardTierOverlay
+                    tier={tierItem}
+                    index={tierIndexMap.get(tierItem.id) ?? 0}
+                  />
+                )
+              }
               const player = filteredPlayers.find((p) => p.playerId === activeId)
-              return player ? <TierPlayerCardOverlay player={player} /> : null
+              return player ? (
+                <CardItemOverlay
+                  player={player}
+                  positionRank={positionRankMap.get(player.playerId) ?? ""}
+                  stats={playerStats[player.playerId]}
+                />
+              ) : null
             })()
           ) : activeItem?.type === "tier" ? (
             <TierRowOverlay
+              tier={activeItem.data}
               index={tierIndexMap.get(activeItem.data.id) ?? 0}
             />
           ) : activeItem?.type === "player" ? (
@@ -1134,6 +1295,7 @@ export function RankingEditor({
               player={activeItem.data}
               stats={playerStats[activeItem.data.playerId]}
               columnGroups={columnGroups}
+              containerWidth={scrollRef.current?.offsetWidth}
             />
           ) : null}
         </DragOverlay>
@@ -1156,8 +1318,31 @@ export function RankingEditor({
       <RemoveTierDialog
         open={!!removeTierTarget}
         onOpenChange={(open) => !open && setRemoveTierTarget(null)}
-        tierLabel={removeTierTarget ? `Tier ${(tierIndexMap.get(removeTierTarget.id) ?? 0) + 1}` : ""}
+        tierLabel={removeTierTarget?.label ?? ""}
         onConfirm={handleConfirmRemoveTier}
+      />
+
+      <SettingsDialog
+        ranking={ranking}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSave={onSettingsSave}
+      />
+
+      <AddPlayerDrawer
+        open={addPlayerOpen}
+        onOpenChange={setAddPlayerOpen}
+        existingPlayerIds={existingPlayerIds}
+        positions={ranking.positions}
+        scoring={ranking.scoring}
+        onAddPlayer={handleAddPlayer}
+      />
+
+      <RemovePlayerDialog
+        open={!!removePlayerTarget}
+        onOpenChange={(open) => !open && setRemovePlayerTarget(null)}
+        playerName={removePlayerTarget?.name ?? ""}
+        onConfirm={handleConfirmRemovePlayer}
       />
     </div>
   )
