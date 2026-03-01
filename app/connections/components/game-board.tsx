@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { GameTile } from "./game-tile"
 import { SolvedGroup } from "./solved-group"
 import { GameHeader } from "./game-header"
@@ -51,7 +51,7 @@ interface GameBoardProps {
 
 export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps) {
   const { user } = useAuth()
-  const storageKey = `${STORAGE_KEY_PREFIX}${puzzle.date || puzzle.id}`
+  const storageKey = `${STORAGE_KEY_PREFIX}${puzzle.id}`
 
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isStatsOpen, setIsStatsOpen] = useState(false)
@@ -121,6 +121,12 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set())
+  const [boardAlert, setBoardAlert] = useState<string | null>(null)
+  const [pastGuesses, setPastGuesses] = useState<Set<string>>(new Set())
+
+  // Track whether the game was completed during THIS session (not loaded from storage)
+  const completedThisSession = useRef(false)
+  const hasSavedResult = useRef(false)
 
   // Persist state with resetVersion
   useEffect(() => {
@@ -131,9 +137,10 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     localStorage.setItem(storageKey, JSON.stringify(stateToSave))
   }, [gameState, storageKey, puzzle.resetVersion])
 
-  // Save result to Firestore when game completes
+  // Save result to Firestore — only when completed during this session, and only once
   useEffect(() => {
-    if (!gameState.isComplete || !user) return
+    if (!gameState.isComplete || !user || !completedThisSession.current || hasSavedResult.current) return
+    hasSavedResult.current = true
 
     const saveResult = async () => {
       try {
@@ -187,8 +194,20 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     setSelected(new Set())
   }
 
+  const showBoardAlert = (message: string) => {
+    setBoardAlert(message)
+    setTimeout(() => setBoardAlert(null), 2000)
+  }
+
   const handleSubmit = () => {
     if (selected.size !== 4) return
+
+    // Check for duplicate guess
+    const guessKey = [...selected].sort().join(",")
+    if (pastGuesses.has(guessKey)) {
+      showBoardAlert("Already guessed!")
+      return
+    }
 
     const selectedTiles = tiles.filter((t) => selected.has(t.playerId))
     const difficulties = selectedTiles.map((t) => t.difficulty)
@@ -199,12 +218,16 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     // Record the guess in history (difficulties of the guessed players)
     const guessRow = selectedTiles.map((t) => t.difficulty)
 
+    // Track this guess
+    setPastGuesses((prev) => new Set(prev).add(guessKey))
+
     if (isCorrect) {
       const solvedDifficulty = difficulties[0]
 
       setGameState((prev) => {
         const newSolvedCategories = [...prev.solvedCategories, solvedDifficulty]
         const allSolved = newSolvedCategories.length === 4
+        if (allSolved) completedThisSession.current = true
         return {
           ...prev,
           solvedCategories: newSolvedCategories,
@@ -218,13 +241,26 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
       setTiles((prev) => prev.filter((t) => !selected.has(t.playerId)))
       setSelected(new Set())
     } else {
+      // Check if 3 of 4 belong to the same category ("one away")
+      const diffCounts = new Map<number, number>()
+      for (const d of difficulties) {
+        diffCounts.set(d, (diffCounts.get(d) || 0) + 1)
+      }
+      const isOneAway = Array.from(diffCounts.values()).some((count) => count === 3)
+
       // Shake incorrect tiles
       setShakingIds(new Set(selected))
-      setTimeout(() => setShakingIds(new Set()), 500)
+      setTimeout(() => {
+        setShakingIds(new Set())
+        if (isOneAway) {
+          showBoardAlert("One away...")
+        }
+      }, 500)
 
       setGameState((prev) => {
         const newMistakes = prev.mistakes + 1
         const isGameOver = newMistakes >= MAX_MISTAKES
+        if (isGameOver) completedThisSession.current = true
         return {
           ...prev,
           mistakes: newMistakes,
@@ -268,33 +304,45 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
         onOpenCalendar={() => setIsCalendarOpen(true)}
       />
 
-      {/* Solved groups */}
-      <div className="flex flex-col gap-1 mb-1">
-        {solvedCategories.map((cat) => (
-          <SolvedGroup key={cat.difficulty} category={cat} />
-        ))}
-      </div>
-
-      {/* Unsolved tiles grid */}
-      {tiles.length > 0 && (
-        <div className="grid grid-cols-4 gap-1 mb-1">
-          {tiles.map((tile) => (
-            <GameTile
-              key={tile.playerId}
-              name={tile.name}
-              headshotUrl={tile.headshotUrl}
-              isSelected={selected.has(tile.playerId)}
-              isShaking={shakingIds.has(tile.playerId)}
-              disabled={gameState.isComplete}
-              onClick={() => handleTileClick(tile.playerId)}
-            />
+      {/* Board area — relative for centered alerts */}
+      <div className="relative">
+        {/* Solved groups */}
+        <div className="flex flex-col gap-1.5 mb-1.5">
+          {solvedCategories.map((cat) => (
+            <SolvedGroup key={cat.difficulty} category={cat} />
           ))}
         </div>
-      )}
+
+        {/* Unsolved tiles grid */}
+        {tiles.length > 0 && (
+          <div className="grid grid-cols-4 gap-1 mb-1">
+            {tiles.map((tile) => (
+              <GameTile
+                key={tile.playerId}
+                name={tile.name}
+                headshotUrl={tile.headshotUrl}
+                isSelected={selected.has(tile.playerId)}
+                isShaking={shakingIds.has(tile.playerId)}
+                disabled={gameState.isComplete}
+                onClick={() => handleTileClick(tile.playerId)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Board alert — centered on board */}
+        {boardAlert && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <div className="bg-foreground text-background text-sm font-semibold px-4 py-2 rounded-md shadow-lg">
+              {boardAlert}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Mistakes remaining (below grid) */}
       {!gameState.isComplete && (
-        <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="flex items-center justify-center gap-2 mt-3 mb-4">
           <span className="text-xs text-muted-foreground">
             Mistakes remaining:
           </span>

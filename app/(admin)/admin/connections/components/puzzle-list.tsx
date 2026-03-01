@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Search, X, ChevronRight, ChevronDown } from "lucide-react"
+import { Search, X, ChevronUp, ChevronDown, Pencil } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
 
@@ -27,6 +27,8 @@ type DisplayStatus = "Draft" | "Published" | "Active" | "Played"
 interface PuzzleListProps {
   puzzles: ConnectionsPuzzle[]
   calendar: Record<string, string>
+  stack: string[]
+  stackPointer: number
 }
 
 function getTodayKey(): string {
@@ -60,7 +62,7 @@ function InlineStats({ puzzleId }: { puzzleId: string }) {
 
   if (loading) {
     return (
-      <div className="flex gap-8 px-12 py-3 items-center">
+      <div className="flex gap-8 px-6 py-3 items-center">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-20" />
@@ -70,7 +72,7 @@ function InlineStats({ puzzleId }: { puzzleId: string }) {
 
   if (error) {
     return (
-      <div className="px-12 py-3 text-xs text-destructive">
+      <div className="px-6 py-3 text-xs text-destructive">
         Failed to load stats
       </div>
     )
@@ -78,14 +80,14 @@ function InlineStats({ puzzleId }: { puzzleId: string }) {
 
   if (!stats || stats.totalPlays === 0) {
     return (
-      <div className="px-12 py-3 text-xs text-muted-foreground">
+      <div className="px-6 py-3 text-xs text-muted-foreground">
         No plays recorded
       </div>
     )
   }
 
   return (
-    <div className="flex gap-8 px-12 py-3">
+    <div className="flex gap-8 px-6 py-3">
       <div>
         <span className="text-[10px] font-semibold text-muted-foreground">PLAYS</span>
         <p className="text-sm font-bold">{stats.totalPlays}</p>
@@ -119,7 +121,13 @@ function getAuthorDisplay(createdBy: { email: string; username?: string }): stri
   return createdBy.username || createdBy.email.split("@")[0]
 }
 
-export function PuzzleList({ puzzles, calendar }: PuzzleListProps) {
+function getOrdinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleListProps) {
   const [statusFilter, setStatusFilter] = useState("all")
   const [authorFilter, setAuthorFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -138,6 +146,34 @@ export function PuzzleList({ puzzles, calendar }: PuzzleListProps) {
     }
     return ids
   }, [calendar, todayKey])
+
+  // Build a map from puzzleId -> scheduled info
+  const scheduledMap = useMemo(() => {
+    const map = new Map<string, string>()
+
+    // Calendar assignments — find the next scheduled date for each puzzle
+    for (const [date, puzzleId] of Object.entries(calendar)) {
+      if (date >= todayKey) {
+        const existing = map.get(puzzleId)
+        // Keep the earliest future date
+        if (!existing || !existing.startsWith("Stack")) {
+          const d = new Date(date + "T00:00:00")
+          map.set(puzzleId, d.toLocaleDateString("default", { month: "short", day: "numeric" }))
+        }
+      }
+    }
+
+    // Stack positions (only items at or after stackPointer)
+    for (let i = stackPointer; i < stack.length; i++) {
+      const puzzleId = stack[i]
+      if (!map.has(puzzleId)) {
+        const position = i - stackPointer + 1
+        map.set(puzzleId, `${getOrdinal(position)} in Stack`)
+      }
+    }
+
+    return map
+  }, [calendar, stack, stackPointer, todayKey])
 
   // Build unique author list for the author filter dropdown
   const authorOptions = useMemo(() => {
@@ -192,8 +228,8 @@ export function PuzzleList({ puzzles, calendar }: PuzzleListProps) {
   return (
     <div>
       {/* Controls row */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-end gap-3 mb-3 flex-wrap">
+        <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold text-muted-foreground">STATUS</label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-28 h-8 text-xs">
@@ -209,7 +245,7 @@ export function PuzzleList({ puzzles, calendar }: PuzzleListProps) {
           </Select>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold text-muted-foreground">AUTHOR</label>
           <Select value={authorFilter} onValueChange={setAuthorFilter}>
             <SelectTrigger className="w-32 h-8 text-xs">
@@ -248,131 +284,122 @@ export function PuzzleList({ puzzles, calendar }: PuzzleListProps) {
 
       {/* Table */}
       <div className="border-3 border-border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b-3 border-border bg-muted/30 text-xs">
-              <th className="text-left px-4 py-2.5 font-semibold">Title</th>
-              <th className="text-left px-4 py-2.5 font-semibold hidden md:table-cell w-32">
-                Categories
-              </th>
-              <th className="text-left px-4 py-2.5 font-semibold hidden lg:table-cell w-28">
-                Author
-              </th>
-              <th className="text-left px-4 py-2.5 font-semibold w-24">Status</th>
-              <th className="text-left px-4 py-2.5 font-semibold hidden lg:table-cell w-28">
-                Created
-              </th>
-              <th className="w-10" />
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPuzzles.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="py-12 text-center text-muted-foreground text-sm">
-                  No puzzles found
-                </td>
-              </tr>
-            ) : (
-              filteredPuzzles.map((puzzle) => {
-                const displayStatus = getDisplayStatus(puzzle)
-                const isExpanded = expandedId === puzzle.id
-                const hasStats = displayStatus === "Active" || displayStatus === "Played"
-                const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
+        {filteredPuzzles.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">
+            No puzzles found
+          </div>
+        ) : (
+          filteredPuzzles.map((puzzle) => {
+            const displayStatus = getDisplayStatus(puzzle)
+            const isExpanded = expandedId === puzzle.id
+            const hasStats = displayStatus === "Active" || displayStatus === "Played"
+            const isEditable = displayStatus === "Draft" || displayStatus === "Published"
+            const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
+            const scheduled = scheduledMap.get(puzzle.id)
 
-                return (
-                  <tr key={puzzle.id} className="border-b border-border/50 group">
-                    <td colSpan={6} className="p-0">
-                      {/* Main row */}
-                      <div className="flex items-center hover:bg-muted/20 transition-colors">
-                        {/* Title */}
+            return (
+              <div key={puzzle.id} className="border-b border-border/50 group/row">
+                {/* Main row */}
+                <div className="flex items-center gap-3 px-4 py-4 hover:bg-muted/20 transition-colors">
+                  {/* Left: title block with author + status below */}
+                  <div className="w-44 shrink-0 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/admin/connections/${puzzle.id}`}
+                        className="text-sm font-medium truncate hover:underline"
+                      >
+                        {puzzle.title || (
+                          <span className="text-muted-foreground italic">Untitled</span>
+                        )}
+                      </Link>
+                      {isEditable && (
                         <Link
                           href={`/admin/connections/${puzzle.id}`}
-                          className="flex-1 px-4 py-2.5 font-medium truncate min-w-0"
+                          className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-all shrink-0"
                         >
-                          {puzzle.title || (
-                            <span className="text-muted-foreground italic">Untitled</span>
-                          )}
+                          <Pencil className="h-3 w-3" />
                         </Link>
-
-                        {/* Categories — vertical pills */}
-                        <div className="px-4 py-2 hidden md:flex flex-col gap-px w-32 shrink-0">
-                          {sorted.map((cat) => {
-                            const colors = DIFFICULTY_COLORS[cat.difficulty]
-                            return (
-                              <span
-                                key={cat.difficulty}
-                                className={`${colors.bg} ${colors.text} text-[9px] font-bold px-1.5 py-px truncate block`}
-                                title={cat.name}
-                              >
-                                {cat.name || "—"}
-                              </span>
-                            )
-                          })}
-                        </div>
-
-                        {/* Author */}
-                        <span className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:block w-28 truncate shrink-0">
-                          {puzzle.createdBy?.email
-                            ? getAuthorDisplay(puzzle.createdBy)
-                            : "—"}
-                        </span>
-
-                        {/* Status */}
-                        <span className="px-4 py-2.5 w-24 shrink-0">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${getStatusBadgeClasses(displayStatus)}`}
-                          >
-                            {displayStatus}
-                          </Badge>
-                        </span>
-
-                        {/* Created */}
-                        <span className="px-4 py-2.5 text-muted-foreground text-xs hidden lg:block w-28 shrink-0">
-                          {puzzle.createdAt
-                            ? new Date(puzzle.createdAt).toLocaleDateString()
-                            : "—"}
-                        </span>
-
-                        {/* Action: expand stats OR navigate to editor */}
-                        <div className="w-10 shrink-0 flex items-center justify-center">
-                          {hasStats ? (
-                            <button
-                              onClick={() => setExpandedId(isExpanded ? null : puzzle.id)}
-                              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-                              title="Show stats"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </button>
-                          ) : (
-                            <Link
-                              href={`/admin/connections/${puzzle.id}`}
-                              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-                              title="Edit puzzle"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Expanded stats row */}
-                      {isExpanded && hasStats && (
-                        <div className="bg-muted/10 border-t border-border/30">
-                          <InlineStats puzzleId={puzzle.id} />
-                        </div>
                       )}
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        {puzzle.createdBy?.email
+                          ? getAuthorDisplay(puzzle.createdBy)
+                          : "—"}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] leading-none py-0 px-1.5 ${getStatusBadgeClasses(displayStatus)}`}
+                      >
+                        {displayStatus}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Date Created */}
+                  <div className="hidden lg:block w-20 shrink-0">
+                    <p className="text-[10px] font-semibold text-muted-foreground">CREATED</p>
+                    <p className="text-xs text-muted-foreground">
+                      {puzzle.createdAt
+                        ? new Date(puzzle.createdAt).toLocaleDateString("default", { month: "short", day: "numeric" })
+                        : "—"}
+                    </p>
+                  </div>
+
+                  {/* Scheduled */}
+                  <div className="hidden lg:block w-24 shrink-0">
+                    <p className="text-[10px] font-semibold text-muted-foreground">SCHEDULED</p>
+                    <p className="text-xs text-muted-foreground">
+                      {displayStatus === "Active"
+                        ? "Today"
+                        : scheduled || "None"}
+                    </p>
+                  </div>
+
+                  {/* Categories — 2x2 grid */}
+                  <div className="hidden md:grid grid-cols-2 gap-1 flex-1 min-w-0">
+                    {sorted.map((cat) => {
+                      const colors = DIFFICULTY_COLORS[cat.difficulty]
+                      return (
+                        <span
+                          key={cat.difficulty}
+                          className={`${colors.bg} ${colors.text} text-[11px] font-bold px-2 py-1 truncate block`}
+                          title={cat.name}
+                        >
+                          {cat.name || "—"}
+                        </span>
+                      )
+                    })}
+                  </div>
+
+                  {/* Action: expand stats */}
+                  {hasStats ? (
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : puzzle.id)}
+                      className="w-8 h-8 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                      title={isExpanded ? "Hide stats" : "Show stats"}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4" />
+                      )}
+                    </button>
+                  ) : (
+                    <div className="w-8 shrink-0" />
+                  )}
+                </div>
+
+                {/* Expanded stats row */}
+                {isExpanded && hasStats && (
+                  <div className="bg-muted/10 border-t border-border/30">
+                    <InlineStats puzzleId={puzzle.id} />
+                  </div>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )

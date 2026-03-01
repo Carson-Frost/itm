@@ -17,9 +17,9 @@ export async function GET(
   try {
     const db = getAdminFirestore()
 
-    // Collection group query on connections_results
+    // Query top-level connections_results collection (no collection group index needed)
     const resultsSnap = await db
-      .collectionGroup("connections_results")
+      .collection("connections_results")
       .where("puzzleId", "==", id)
       .get()
 

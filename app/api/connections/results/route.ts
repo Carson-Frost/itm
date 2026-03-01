@@ -21,19 +21,31 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getAdminFirestore()
-    await db
-      .collection("users")
-      .doc(uid)
-      .collection("connections_results")
-      .doc(puzzleId)
-      .set({
-        puzzleId,
-        date: date || new Date().toISOString().split("T")[0],
-        solved,
-        mistakes,
-        solveOrder: solveOrder || [],
-        completedAt: new Date().toISOString(),
-      })
+    const resultData = {
+      puzzleId,
+      uid,
+      date: date || new Date().toISOString().split("T")[0],
+      solved,
+      mistakes,
+      solveOrder: solveOrder || [],
+      completedAt: new Date().toISOString(),
+    }
+
+    const batch = db.batch()
+
+    // Write to user subcollection (for per-user lookups)
+    batch.set(
+      db.collection("users").doc(uid).collection("connections_results").doc(puzzleId),
+      resultData
+    )
+
+    // Write to top-level collection (for admin queries — avoids collection group index)
+    batch.set(
+      db.collection("connections_results").doc(`${uid}_${puzzleId}`),
+      resultData
+    )
+
+    await batch.commit()
 
     return NextResponse.json({ success: true })
   } catch (error: unknown) {

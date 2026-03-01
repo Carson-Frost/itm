@@ -287,7 +287,7 @@ export default function ConnectionsPage() {
       <Tabs defaultValue="schedule" className="mt-6">
         <TabsList>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="all-puzzles">All Puzzles</TabsTrigger>
+          <TabsTrigger value="all-puzzles">Puzzles</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="mt-4">
@@ -354,8 +354,8 @@ export default function ConnectionsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="all-puzzles" className="mt-4">
-          <PuzzleList puzzles={puzzles} calendar={config.calendar} />
+        <TabsContent value="all-puzzles" className="mt-2">
+          <PuzzleList puzzles={puzzles} calendar={config.calendar} stack={config.stack} stackPointer={config.stackPointer ?? 0} />
         </TabsContent>
       </Tabs>
 

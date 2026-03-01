@@ -25,10 +25,10 @@ export const GameTile = memo(function GameTile({
       disabled={disabled}
       className={`
         aspect-square relative
-        border-3 border-border transition-colors select-none overflow-hidden
+        border-2 transition-colors select-none overflow-hidden
         bg-muted/30
         ${isShaking ? "animate-shake" : ""}
-        ${isSelected ? "shadow-[inset_0_0_0_3px_var(--color-ring),inset_0_0_10px_-2px_var(--color-ring)]" : "hover:bg-muted/60"}
+        ${isSelected ? "border-primary" : "border-border/30 hover:bg-muted/60"}
         ${disabled ? "cursor-default" : "cursor-pointer"}
       `}
     >
@@ -40,6 +40,11 @@ export const GameTile = memo(function GameTile({
         />
       ) : (
         <div className="w-full h-full bg-muted/50" />
+      )}
+
+      {/* Selection glow overlay — renders above image */}
+      {isSelected && (
+        <div className="absolute inset-0 z-10 border-2 border-primary shadow-[inset_0_0_10px_-2px_var(--primary)] pointer-events-none" />
       )}
 
       {/* Name overlay */}

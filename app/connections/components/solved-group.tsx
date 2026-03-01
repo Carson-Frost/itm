@@ -12,7 +12,7 @@ export function SolvedGroup({ category }: SolvedGroupProps) {
 
   return (
     <div
-      className={`${colors.bg} ${colors.text} px-4 py-3 sm:py-4 flex flex-col items-center justify-center gap-0.5`}
+      className={`${colors.bg} ${colors.text} px-4 py-4 sm:py-5 flex flex-col items-center justify-center gap-0.5`}
     >
       <p className="font-bold text-base sm:text-lg uppercase tracking-wide leading-tight">
         {category.name}

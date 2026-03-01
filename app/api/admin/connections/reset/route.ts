@@ -25,17 +25,31 @@ export async function POST(req: NextRequest) {
     const db = getAdminFirestore()
 
     if (uid && typeof uid === "string") {
-      // Reset specific user
-      const docRef = db
+      // Reset specific user — delete from both subcollection and top-level
+      const batch = db.batch()
+
+      const subRef = db
         .collection("users")
         .doc(uid)
         .collection("connections_results")
         .doc(puzzleId)
+      const topRef = db
+        .collection("connections_results")
+        .doc(`${uid}_${puzzleId}`)
 
-      const doc = await docRef.get()
-      if (doc.exists) {
-        await docRef.delete()
-      }
+      const subDoc = await subRef.get()
+      if (subDoc.exists) batch.delete(subRef)
+
+      const topDoc = await topRef.get()
+      if (topDoc.exists) batch.delete(topRef)
+
+      // Increment resetVersion on puzzle
+      batch.update(
+        db.collection("connections_puzzles").doc(puzzleId),
+        { resetVersion: FieldValue.increment(1) }
+      )
+
+      await batch.commit()
 
       await logAudit({
         adminUid: admin.uid,
@@ -45,25 +59,37 @@ export async function POST(req: NextRequest) {
         severity: "high",
       })
 
-      // Increment resetVersion on puzzle
-      await db
-        .collection("connections_puzzles")
-        .doc(puzzleId)
-        .update({ resetVersion: FieldValue.increment(1) })
-
-      return NextResponse.json({ success: true, resetCount: doc.exists ? 1 : 0 })
+      return NextResponse.json({ success: true, resetCount: subDoc.exists ? 1 : 0 })
     } else {
-      // Reset all users for this puzzle
+      // Reset all users — query top-level collection (no collection group index needed)
       const resultsSnap = await db
-        .collectionGroup("connections_results")
+        .collection("connections_results")
         .where("puzzleId", "==", puzzleId)
         .get()
 
-      const batch = db.batch()
-      for (const doc of resultsSnap.docs) {
-        batch.delete(doc.ref)
+      // Batch delete from both top-level and subcollections
+      // Firestore batches limited to 500, so chunk if needed
+      const docs = resultsSnap.docs
+      const chunks: FirebaseFirestore.DocumentSnapshot[][] = []
+      for (let i = 0; i < docs.length; i += 200) {
+        chunks.push(docs.slice(i, i + 200))
       }
-      await batch.commit()
+
+      for (const chunk of chunks) {
+        const batch = db.batch()
+        for (const doc of chunk) {
+          const data = doc.data()
+          // Delete top-level doc
+          batch.delete(doc.ref)
+          // Delete matching subcollection doc
+          if (data?.uid) {
+            batch.delete(
+              db.collection("users").doc(data.uid).collection("connections_results").doc(puzzleId)
+            )
+          }
+        }
+        await batch.commit()
+      }
 
       // Increment resetVersion on puzzle
       await db
