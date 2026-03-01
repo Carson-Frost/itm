@@ -76,7 +76,7 @@ export function getSeasonStats(filter: SeasonStatsFilter = {}): SeasonStats[] {
   // Map id to _id to match MongoDB interface
   return results.map((row) => ({
     ...row,
-    _id: row.id,
+    _id: (row as unknown as { id: string }).id,
   })) as SeasonStats[]
 }
 
@@ -128,7 +128,7 @@ export function getWeeklyStats(filter: WeeklyStatsFilter = {}): WeeklyStats[] {
   // Map id to _id to match MongoDB interface
   return results.map((row) => ({
     ...row,
-    _id: row.id,
+    _id: (row as unknown as { id: string }).id,
   })) as WeeklyStats[]
 }
 
@@ -170,7 +170,7 @@ export function getRosterData(filter: RosterDataFilter = {}): RosterData[] {
   // Map id to _id to match MongoDB interface
   return results.map((row) => ({
     ...row,
-    _id: row.id,
+    _id: (row as unknown as { id: string }).id,
   })) as RosterData[]
 }
 

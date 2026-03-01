@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PositionBadge } from "@/components/position-badge"
-import { Player, Position } from "@/lib/mock-fantasy-data"
+import { Player, Position } from "@/lib/types/player"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -133,7 +133,7 @@ export function PlayerTable({
 
   return (
     <div className="border rounded-md">
-      <Table>
+      <Table className="[&_tbody_tr]:border-0">
         <TableHeader>
           <TableRow>
             <TableHead className="text-center w-12"></TableHead>

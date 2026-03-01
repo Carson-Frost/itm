@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { Settings } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,9 +16,10 @@ import { ScoringBadge, QBFormatBadge, TEPremiumBadge } from "@/components/format
 
 interface RankingHeaderProps {
   ranking: UserRanking
+  onSettingsOpen?: () => void
 }
 
-export function RankingHeader({ ranking }: RankingHeaderProps) {
+export function RankingHeader({ ranking, onSettingsOpen }: RankingHeaderProps) {
   return (
     <div className="mb-3">
       <Breadcrumb className="mb-4">
@@ -35,7 +37,17 @@ export function RankingHeader({ ranking }: RankingHeaderProps) {
       </Breadcrumb>
 
       <div className="min-w-0">
-        <h1 className="text-2xl sm:text-3xl font-bold">{ranking.name}</h1>
+        <div className="group/title flex items-center gap-2">
+          <h1 className="text-2xl sm:text-3xl font-bold underline">{ranking.name}</h1>
+          {onSettingsOpen && (
+            <button
+              onClick={onSettingsOpen}
+              className="text-foreground opacity-0 group-hover/title:opacity-100 transition-opacity"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-3 mt-1">
           <span className="text-sm font-medium text-muted-foreground">
             {ranking.type === "dynasty" ? "Dynasty" : "Redraft"}

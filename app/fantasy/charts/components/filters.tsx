@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, X } from "lucide-react"
-import { Position } from "@/lib/mock-fantasy-data"
+import { Position } from "@/lib/types/player"
 import { Button } from "@/components/ui/button"
 import { nflTeamsByName, nflDivisions, nflConferences, getTeamFilterLabel } from "@/lib/team-utils"
 

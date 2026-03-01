@@ -7,7 +7,7 @@ import { PlayerTable } from "./components/player-table"
 import { Pagination } from "./components/pagination"
 import { TableSkeleton } from "./components/table-skeleton"
 import { PlayerCard } from "./components/player-card"
-import { Position, Player } from "@/lib/mock-fantasy-data"
+import { Position, Player } from "@/lib/types/player"
 import { SeasonStatsResponse } from "@/app/api/fantasy/season-stats/route"
 import { teamMatchesFilter } from "@/lib/team-utils"
 
@@ -44,7 +44,7 @@ export default function Charts() {
 
       try {
         const params = new URLSearchParams({
-          season: selectedSeason.toString(),
+          season: selectedSeason!.toString(),
         })
 
         const response = await fetch(`/api/fantasy/season-stats?${params}`)

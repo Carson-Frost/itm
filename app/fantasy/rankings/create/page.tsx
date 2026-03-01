@@ -159,39 +159,43 @@ export default function CreateRanking() {
 
     setLoading(true)
     try {
-      const response = await fetch('/api/sleeper/adp')
-      if (!response.ok) {
-        throw new Error('Failed to fetch ADP data')
-      }
+      let players: RankedPlayer[] = []
 
-      const { adp } = await response.json() as { adp: SleeperADP[] }
+      if (base !== "blank") {
+        const response = await fetch('/api/sleeper/adp')
+        if (!response.ok) {
+          throw new Error('Failed to fetch ADP data')
+        }
 
-      // Filter by position and team
-      let filteredPlayers = adp.filter((player) =>
-        positions.includes(player.position as FantasyPosition)
-      )
+        const { adp } = await response.json() as { adp: SleeperADP[] }
 
-      if (teamFilter !== "ALL") {
-        filteredPlayers = filteredPlayers.filter((player) =>
-          teamMatchesFilter(player.team, teamFilter)
+        // Filter by position and team
+        let filteredPlayers = adp.filter((player) =>
+          positions.includes(player.position as FantasyPosition)
         )
+
+        if (teamFilter !== "ALL") {
+          filteredPlayers = filteredPlayers.filter((player) =>
+            teamMatchesFilter(player.team, teamFilter)
+          )
+        }
+
+        // Sort by ADP for selected scoring format
+        filteredPlayers.sort((a, b) => {
+          if (scoring === "PPR") return a.adp_ppr - b.adp_ppr
+          if (scoring === "Half") return a.adp_half_ppr - b.adp_half_ppr
+          return a.adp_std - b.adp_std
+        })
+
+        players = filteredPlayers.map((player, index) => ({
+          rank: index + 1,
+          playerId: player.player_id,
+          name: player.player_name,
+          position: player.position as FantasyPosition,
+          team: player.team,
+          headshotUrl: player.headshot_url || undefined,
+        }))
       }
-
-      // Sort by ADP for selected scoring format
-      filteredPlayers.sort((a, b) => {
-        if (scoring === "PPR") return a.adp_ppr - b.adp_ppr
-        if (scoring === "Half") return a.adp_half_ppr - b.adp_half_ppr
-        return a.adp_std - b.adp_std
-      })
-
-      const players: RankedPlayer[] = filteredPlayers.map((player, index) => ({
-        rank: index + 1,
-        playerId: player.player_id,
-        name: player.player_name,
-        position: player.position as FantasyPosition,
-        team: player.team,
-        headshotUrl: player.headshot_url || undefined,
-      }))
 
       const now = Timestamp.now()
       const rankingsRef = collection(db, "users", user.uid, "rankings")

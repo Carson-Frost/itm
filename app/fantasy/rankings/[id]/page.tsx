@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -17,6 +17,7 @@ export default function EditRanking() {
   const [ranking, setRanking] = useState<UserRanking | null>(null)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved")
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
 
   useEffect(() => {
     async function fetchRanking() {
@@ -61,6 +62,7 @@ export default function EditRanking() {
           updatedAt: Timestamp.now(),
         })
         setSaveStatus("saved")
+        setLastSavedAt(new Date())
       } catch {
         setSaveStatus("error")
       }
@@ -85,9 +87,11 @@ export default function EditRanking() {
   )
 
   const handleTiersChange = useCallback(
-    (tiers: TierSeparator[]) => {
-      setRanking((prev) => prev ? { ...prev, tiers } : prev)
-      saveRanking({ tiers })
+    (tiers: TierSeparator[], hueIndex?: number) => {
+      const updates: Partial<UserRanking> = { tiers }
+      if (hueIndex !== undefined) updates.hueIndex = hueIndex
+      setRanking((prev) => prev ? { ...prev, ...updates } : prev)
+      saveRanking(updates)
     },
     [saveRanking]
   )
@@ -135,6 +139,7 @@ export default function EditRanking() {
           <RankingEditor
             ranking={ranking}
             saveStatus={saveStatus}
+            lastSavedAt={lastSavedAt}
             onSettingsSave={handleSettingsSave}
             onPlayersChange={handlePlayersChange}
             onTiersChange={handleTiersChange}

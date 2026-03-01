@@ -11,9 +11,11 @@ export type TeamFilter = string
 
 // Tier separator between player groups
 export interface TierSeparator {
-  id: string        // "tier_<uuid>" — stable ID for DnD
-  label: string     // "Tier 1", "Tier 2", etc.
-  afterRank: number // rank of the player immediately above this line (0 = top)
+  id: string              // "tier_<uuid>" — stable ID for DnD
+  label: string           // "Tier 1", "Tier 2", etc.
+  afterRank: number       // rank of the player immediately above this line (0 = top)
+  color: string           // oklch(...) value persisted per tier
+  colorCustomized: boolean // false = system-generated color
 }
 
 // Union type for rendering the merged player+tier list
@@ -30,6 +32,7 @@ export interface RankedPlayer {
   position: FantasyPosition
   team: string
   headshotUrl?: string
+  note?: string
 }
 
 // User's custom ranking stored in Firestore
@@ -53,6 +56,7 @@ export interface UserRanking {
   updatedAt: Timestamp
   players: RankedPlayer[]
   tiers?: TierSeparator[]
+  hueIndex?: number // monotonically incrementing color counter, never decremented
 }
 
 // Sleeper ADP data stored in SQLite
