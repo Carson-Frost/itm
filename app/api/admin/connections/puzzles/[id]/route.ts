@@ -107,11 +107,20 @@ export async function PUT(
       return NextResponse.json({ error: "Puzzle not found" }, { status: 404 })
     }
 
+    // Look up admin username from Firestore
+    let adminUsername: string | undefined
+    try {
+      const userDoc = await db.collection("users").doc(admin.uid).get()
+      if (userDoc.exists) adminUsername = userDoc.data()?.username
+    } catch {}
+
+    const authorInfo = { uid: admin.uid, email: admin.email, ...(adminUsername ? { username: adminUsername } : {}) }
+
     const updateData: Record<string, unknown> = {
       title: title || "",
       categories,
       status: status === "published" ? "published" : "draft",
-      updatedBy: { uid: admin.uid, email: admin.email },
+      updatedBy: authorInfo,
       updatedAt: FieldValue.serverTimestamp(),
     }
 

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Shuffle } from "lucide-react"
+import { Shuffle, GripVertical } from "lucide-react"
 import {
   DndContext,
   closestCenter,
@@ -169,23 +169,35 @@ function SortableTile({ tile }: { tile: TilePlayer }) {
       {...attributes}
       {...listeners}
       className={`
-        aspect-square flex flex-col items-center justify-end p-1
-        text-[10px] font-bold uppercase tracking-wide
+        aspect-square relative group
         border-3 border-border bg-muted/30 select-none overflow-hidden cursor-grab
         active:cursor-grabbing
       `}
     >
-      {tile.headshotUrl && (
+      {tile.headshotUrl ? (
         <img
           src={tile.headshotUrl}
           alt=""
-          className="w-10 h-10 shrink-0 mb-auto mt-1 object-cover object-top"
+          className="w-full h-full object-cover object-top"
         />
+      ) : (
+        <div className="w-full h-full bg-muted/50" />
       )}
-      <div className="leading-tight text-center w-full px-0.5">
-        <span className="block truncate text-[9px]">{tile.name}</span>
+
+      {/* Name overlay */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-5 pb-1.5 px-1">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-white text-center leading-tight line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+          {tile.name}
+        </p>
       </div>
-      <div className={`w-full h-1 mt-0.5 ${colors.bg}`} />
+
+      {/* Difficulty stripe */}
+      <div className={`absolute inset-x-0 bottom-0 h-1 ${colors.bg}`} />
+
+      {/* Drag grip icon */}
+      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <GripVertical className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+      </div>
     </div>
   )
 }

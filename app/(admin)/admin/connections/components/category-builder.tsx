@@ -102,41 +102,40 @@ export function CategoryBuilder({
             PLAYERS ({category.players.length}/4)
           </label>
           <div className="grid grid-cols-4 gap-1">
-            {category.players.map((player, i) => {
-              const nameParts = player.name.split(" ")
-              const firstName = nameParts[0]
-              const lastName = nameParts.slice(1).join(" ")
-              return (
-                <div
-                  key={player.playerId}
-                  className="relative h-16 sm:h-20 flex flex-col items-center justify-end p-1 border-3 border-border bg-muted/30 group overflow-hidden"
-                >
-                  {player.headshotUrl && (
-                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 shrink-0 mb-auto mt-1">
-                      <Image
-                        src={player.headshotUrl}
-                        alt=""
-                        fill
-                        className="object-cover object-top"
-                        sizes="40px"
-                      />
-                    </div>
-                  )}
-                  <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wide text-center leading-tight w-full px-0.5">
-                    <span className="block truncate">{firstName}</span>
-                    {lastName && <span className="block truncate">{lastName}</span>}
-                  </div>
-                  <button
-                    onClick={() => handleRemovePlayer(i)}
-                    className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center
-                      bg-background/80 text-muted-foreground hover:text-destructive
-                      opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+            {category.players.map((player, i) => (
+              <div
+                key={player.playerId}
+                className="relative h-16 sm:h-20 border-3 border-border bg-muted/30 group overflow-hidden"
+              >
+                {player.headshotUrl ? (
+                  <Image
+                    src={player.headshotUrl}
+                    alt=""
+                    fill
+                    className="object-cover object-top"
+                    sizes="80px"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-muted/50" />
+                )}
+
+                {/* Name overlay */}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-1 px-1">
+                  <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wide text-white text-center leading-tight line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                    {player.name}
+                  </p>
                 </div>
-              )
-            })}
+
+                <button
+                  onClick={() => handleRemovePlayer(i)}
+                  className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center
+                    bg-background/80 text-muted-foreground hover:text-destructive
+                    opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
 
             {category.players.length < 4 && (
               <button

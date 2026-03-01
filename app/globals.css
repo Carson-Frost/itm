@@ -277,7 +277,6 @@ select,
 
 :root {
   --success: #00a700;
-<<<<<<< Updated upstream
   --tier-1: oklch(0.52 0.24 25);
   --tier-2: oklch(0.60 0.22 40);
   --tier-3: oklch(0.68 0.18 85);
@@ -297,7 +296,6 @@ select,
   --tier-6: oklch(0.63 0.18 290);
   --tier-7: oklch(0.70 0.18 340);
   --tier-8: oklch(0.55 0.06 260);
-=======
 }
 
 @keyframes shake {
@@ -308,5 +306,4 @@ select,
 
 .animate-shake {
   animation: shake 0.5s ease-in-out;
->>>>>>> Stashed changes
 }

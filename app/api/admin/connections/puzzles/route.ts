@@ -98,12 +98,21 @@ export async function POST(req: NextRequest) {
     const puzzleStatus = status === "published" ? "published" : "draft"
     const db = getAdminFirestore()
 
+    // Look up admin username from Firestore
+    let adminUsername: string | undefined
+    try {
+      const userDoc = await db.collection("users").doc(admin.uid).get()
+      if (userDoc.exists) adminUsername = userDoc.data()?.username
+    } catch {}
+
+    const authorInfo = { uid: admin.uid, email: admin.email, ...(adminUsername ? { username: adminUsername } : {}) }
+
     const puzzleData: Record<string, unknown> = {
       title: title || "",
       categories,
       status: puzzleStatus,
-      createdBy: { uid: admin.uid, email: admin.email },
-      updatedBy: { uid: admin.uid, email: admin.email },
+      createdBy: authorInfo,
+      updatedBy: authorInfo,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }

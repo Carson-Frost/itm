@@ -21,8 +21,8 @@ export interface ConnectionsPuzzle {
   status: "draft" | "published"
   tileOrder?: string[] // playerIds in display order for the 4x4 grid
   resetVersion?: number
-  createdBy: { uid: string; email: string }
-  updatedBy: { uid: string; email: string }
+  createdBy: { uid: string; email: string; username?: string }
+  updatedBy: { uid: string; email: string; username?: string }
   createdAt: string
   updatedAt: string
   date?: string // set by API at runtime, not stored

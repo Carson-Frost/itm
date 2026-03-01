@@ -46,8 +46,8 @@ interface PuzzleTableDrawerProps {
   calendar: Record<string, string>
 }
 
-function getAuthorUsername(email: string): string {
-  return email.split("@")[0]
+function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
+  return createdBy.username || createdBy.email.split("@")[0]
 }
 
 function InlineStats({ puzzleId }: { puzzleId: string }) {
@@ -301,7 +301,7 @@ export function PuzzleTableDrawer({ open, onOpenChange, calendar }: PuzzleTableD
 
                                   <span className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:block w-28 truncate text-left">
                                     {puzzle.createdBy?.email
-                                      ? getAuthorUsername(puzzle.createdBy.email)
+                                      ? getAuthorDisplay(puzzle.createdBy)
                                       : "—"}
                                   </span>
 

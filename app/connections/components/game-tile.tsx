@@ -11,14 +11,6 @@ interface GameTileProps {
   onClick: () => void
 }
 
-function splitName(name: string): { first: string; last: string } {
-  const parts = name.split(" ")
-  return {
-    first: parts[0],
-    last: parts.slice(1).join(" "),
-  }
-}
-
 export const GameTile = memo(function GameTile({
   name,
   headshotUrl,
@@ -27,15 +19,12 @@ export const GameTile = memo(function GameTile({
   disabled,
   onClick,
 }: GameTileProps) {
-  const { first, last } = splitName(name)
-
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={`
-        aspect-square flex flex-col items-center justify-end p-1
-        text-[10px] sm:text-xs font-bold uppercase tracking-wide
+        aspect-square relative
         border-3 border-border transition-colors select-none overflow-hidden
         bg-muted/30
         ${isShaking ? "animate-shake" : ""}
@@ -43,16 +32,21 @@ export const GameTile = memo(function GameTile({
         ${disabled ? "cursor-default" : "cursor-pointer"}
       `}
     >
-      {headshotUrl && (
+      {headshotUrl ? (
         <img
           src={headshotUrl}
           alt=""
-          className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 mb-auto mt-1 object-cover object-top"
+          className="w-full h-full object-cover object-top"
         />
+      ) : (
+        <div className="w-full h-full bg-muted/50" />
       )}
-      <div className="leading-tight text-center w-full px-0.5">
-        <span className="block truncate">{first}</span>
-        {last && <span className="block truncate">{last}</span>}
+
+      {/* Name overlay */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-5 pb-1 px-1">
+        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wide text-white text-center leading-tight line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+          {name}
+        </p>
       </div>
     </button>
   )

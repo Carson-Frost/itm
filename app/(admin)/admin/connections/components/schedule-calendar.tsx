@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
-import { PuzzleCategoryStack, MiniCategoryBars } from "./puzzle-category-stack"
+import { PuzzleCategoryStack, MiniCategoryPills } from "./puzzle-category-stack"
 
 interface ScheduleCalendarProps {
   calendar: Record<string, string>
@@ -21,47 +21,6 @@ interface ScheduleCalendarProps {
 
 function formatDateKey(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-}
-
-export function Countdown() {
-  const [timeLeft, setTimeLeft] = useState("")
-
-  useEffect(() => {
-    const update = () => {
-      const now = new Date()
-      const tomorrow = new Date(now)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      tomorrow.setHours(0, 0, 0, 0)
-      const diff = tomorrow.getTime() - now.getTime()
-      const h = Math.floor(diff / (1000 * 60 * 60))
-      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      const s = Math.floor((diff % (1000 * 60)) / 1000)
-      setTimeLeft(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-      )
-    }
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  return (
-    <div className="border-3 border-border p-4 flex items-center justify-between">
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground">NEXT PUZZLE IN</p>
-        <p className="text-2xl font-mono font-bold tracking-wider">{timeLeft}</p>
-      </div>
-      <div className="text-right">
-        <p className="text-xs font-semibold text-muted-foreground">
-          {new Date().toLocaleDateString("default", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          })}
-        </p>
-      </div>
-    </div>
-  )
 }
 
 export function ScheduleCalendar({
@@ -140,7 +99,7 @@ export function ScheduleCalendar({
       {/* Day cells */}
       <div className="grid grid-cols-7 gap-px bg-border/50">
         {Array.from({ length: firstDay }).map((_, i) => (
-          <div key={`empty-${i}`} className="bg-background h-20" />
+          <div key={`empty-${i}`} className="bg-background h-24" />
         ))}
 
         {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -155,7 +114,7 @@ export function ScheduleCalendar({
               key={day}
               onClick={() => setSelectedDate(dateKey)}
               className={`
-                bg-background h-20 p-1.5 text-left flex flex-col cursor-pointer
+                bg-background h-24 p-1.5 text-left flex flex-col cursor-pointer
                 transition-colors hover:ring-1 hover:ring-primary hover:ring-inset
                 ${isToday ? "ring-2 ring-primary ring-inset" : ""}
               `}
@@ -169,7 +128,7 @@ export function ScheduleCalendar({
               </span>
               {puzzle && (
                 <div className="mt-1 w-full px-0.5">
-                  <MiniCategoryBars puzzle={puzzle} />
+                  <MiniCategoryPills puzzle={puzzle} />
                 </div>
               )}
             </button>

@@ -5,17 +5,17 @@ import type { ConnectionsPuzzle } from "@/lib/types/connections"
 
 interface PuzzleCategoryStackProps {
   puzzle: ConnectionsPuzzle
-  size?: "sm" | "md"
+  layout?: "vertical" | "grid"
   showAuthor?: boolean
 }
 
-function getAuthorUsername(email: string): string {
-  return email.split("@")[0]
+function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
+  return createdBy.username || createdBy.email.split("@")[0]
 }
 
 export function PuzzleCategoryStack({
   puzzle,
-  size = "sm",
+  layout = "vertical",
   showAuthor = true,
 }: PuzzleCategoryStackProps) {
   const sorted = [...(puzzle.categories || [])]
@@ -26,9 +26,9 @@ export function PuzzleCategoryStack({
     return { difficulty: diff, name: cat?.name || null }
   })
 
-  const textSize = size === "sm" ? "text-[11px]" : "text-xs"
-  const barWidth = size === "sm" ? "w-[3px]" : "w-1"
-  const gap = size === "sm" ? "gap-0" : "gap-0.5"
+  const containerClass = layout === "grid"
+    ? "grid grid-cols-2 gap-1"
+    : "flex flex-col gap-1"
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -42,27 +42,22 @@ export function PuzzleCategoryStack({
       {/* Author */}
       {showAuthor && puzzle.createdBy?.email && (
         <p className="text-[11px] text-muted-foreground leading-tight truncate">
-          {getAuthorUsername(puzzle.createdBy.email)}
+          {getAuthorDisplay(puzzle.createdBy)}
         </p>
       )}
 
-      {/* Category rows */}
-      <div className={`flex flex-col ${gap} ${showAuthor || puzzle.title ? "mt-1" : ""}`}>
+      {/* Category pills */}
+      <div className={`${containerClass} ${showAuthor || puzzle.title ? "mt-1" : ""}`}>
         {rows.map((row) => {
           const colors = DIFFICULTY_COLORS[row.difficulty]
+          const isEmpty = !row.name
           return (
-            <div key={row.difficulty} className="flex items-center gap-1.5">
-              <div className={`${barWidth} h-3.5 shrink-0 ${colors.bg}`} />
-              {row.name ? (
-                <span className={`${textSize} font-medium truncate leading-tight`}>
-                  {row.name}
-                </span>
-              ) : (
-                <span className={`${textSize} text-muted-foreground/40 italic leading-tight`}>
-                  —
-                </span>
-              )}
-            </div>
+            <span
+              key={row.difficulty}
+              className={`${colors.bg} ${colors.text} px-2 py-0.5 text-[11px] font-semibold truncate block ${isEmpty ? "opacity-30" : ""}`}
+            >
+              {row.name || "—"}
+            </span>
           )
         })}
       </div>
@@ -70,11 +65,11 @@ export function PuzzleCategoryStack({
   )
 }
 
-interface MiniCategoryBarsProps {
+interface MiniCategoryPillsProps {
   puzzle: ConnectionsPuzzle
 }
 
-export function MiniCategoryBars({ puzzle }: MiniCategoryBarsProps) {
+export function MiniCategoryPills({ puzzle }: MiniCategoryPillsProps) {
   const sorted = [...(puzzle.categories || [])]
     .sort((a, b) => a.difficulty - b.difficulty)
 
@@ -88,7 +83,12 @@ export function MiniCategoryBars({ puzzle }: MiniCategoryBarsProps) {
       {rows.map((row) => {
         const colors = DIFFICULTY_COLORS[row.difficulty]
         return (
-          <div key={row.difficulty} className={`${colors.bg} h-1 w-full`} />
+          <span
+            key={row.difficulty}
+            className={`${colors.bg} ${colors.text} text-[8px] font-semibold px-1 py-px truncate block`}
+          >
+            {row.name || "—"}
+          </span>
         )
       })}
     </div>

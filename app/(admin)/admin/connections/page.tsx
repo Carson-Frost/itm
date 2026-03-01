@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
@@ -23,9 +22,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
-import { Loader2, Plus, X, RefreshCw, RotateCcw, Search, Check, Pencil } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Loader2, X, RefreshCw, RotateCcw, Search, Check, Plus } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
-import { ScheduleCalendar, Countdown } from "./components/schedule-calendar"
+import { CommandStrip } from "./components/command-strip"
+import { ScheduleCalendar } from "./components/schedule-calendar"
 import { PuzzleStack } from "./components/puzzle-stack"
 import { PuzzleList } from "./components/puzzle-list"
 import { PuzzleCategoryStack } from "./components/puzzle-category-stack"
@@ -198,125 +200,164 @@ export default function ConnectionsPage() {
 
   if (!config) return null
 
-  const activePuzzleId = config.calendar[todayKey]
-  const activePuzzle = activePuzzleId
-    ? puzzles.find((p) => p.id === activePuzzleId)
-    : null
+  // Compute today's active puzzle using 3-tier logic: calendar → stack[stackPointer] → fallback
+  const { activePuzzle, activeSource } = (() => {
+    // 1. Calendar assignment
+    const calendarId = config.calendar[todayKey]
+    if (calendarId) {
+      const p = puzzles.find((pz) => pz.id === calendarId)
+      if (p) return { activePuzzle: p, activeSource: "calendar" as const }
+    }
+    // 2. Stack[stackPointer]
+    const pointer = config.stackPointer ?? 0
+    if (config.stack.length > pointer) {
+      const p = puzzles.find((pz) => pz.id === config.stack[pointer])
+      if (p) return { activePuzzle: p, activeSource: "stack" as const }
+    }
+    // 3. Fallback
+    if (config.fallbackPuzzleId) {
+      const p = puzzles.find((pz) => pz.id === config.fallbackPuzzleId)
+      if (p) return { activePuzzle: p, activeSource: "fallback" as const }
+    }
+    return { activePuzzle: null, activeSource: null }
+  })()
 
   const fallbackPuzzle = config.fallbackPuzzleId
     ? puzzles.find((p) => p.id === config.fallbackPuzzleId)
     : null
 
+  // Compute tomorrow's puzzle using 3-tier logic: calendar → stack[0] → fallback
+  const tomorrowKey = (() => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`
+  })()
+
+  const { tomorrowPuzzle, tomorrowSource } = (() => {
+    // 1. Calendar assignment
+    const calendarId = config.calendar[tomorrowKey]
+    if (calendarId) {
+      const p = puzzles.find((pz) => pz.id === calendarId)
+      if (p) return { tomorrowPuzzle: p, tomorrowSource: "calendar" as const }
+    }
+    // 2. Stack[0]
+    if (config.stack.length > 0) {
+      const p = puzzles.find((pz) => pz.id === config.stack[0])
+      if (p) return { tomorrowPuzzle: p, tomorrowSource: "stack" as const }
+    }
+    // 3. Fallback
+    if (config.fallbackPuzzleId) {
+      const p = puzzles.find((pz) => pz.id === config.fallbackPuzzleId)
+      if (p) return { tomorrowPuzzle: p, tomorrowSource: "fallback" as const }
+    }
+    return { tomorrowPuzzle: null, tomorrowSource: null }
+  })()
+
   return (
     <div>
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Connections</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Connections</h1>
           {saving && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Saving...
             </span>
           )}
-          <Link href="/admin/connections/new">
-            <Button className="btn-chamfer">
-              <Plus className="h-4 w-4 mr-2" />
-              New Puzzle
-            </Button>
-          </Link>
         </div>
+        <Link href="/admin/connections/new">
+          <Button className="btn-chamfer">
+            <Plus className="h-4 w-4 mr-2" />
+            New Puzzle
+          </Button>
+        </Link>
       </div>
 
-      {/* Active Puzzle + Countdown row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Active Puzzle */}
-        <div className="border-3 border-border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground">ACTIVE PUZZLE</p>
-            <button
-              onClick={() => setIsActiveEditOpen(true)}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {activePuzzle ? (
-            <PuzzleCategoryStack puzzle={activePuzzle} size="md" showAuthor />
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No puzzle assigned for today</p>
-          )}
-        </div>
+      {/* ── TIER 1: Command Strip ── */}
+      <CommandStrip
+        activePuzzle={activePuzzle}
+        activeSource={activeSource}
+        tomorrowPuzzle={tomorrowPuzzle}
+        tomorrowSource={tomorrowSource}
+        onEditActive={() => setIsActiveEditOpen(true)}
+      />
 
-        {/* Countdown */}
-        <Countdown />
-      </div>
+      {/* ── Tabbed Content ── */}
+      <Tabs defaultValue="schedule" className="mt-6">
+        <TabsList>
+          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="all-puzzles">All Puzzles</TabsTrigger>
+        </TabsList>
 
-      {/* Calendar + Stack row */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 mb-8">
-        {/* Calendar */}
-        <div>
-          <ScheduleCalendar
-            calendar={config.calendar}
-            puzzles={publishedPuzzles}
-            onAssign={handleCalendarAssign}
-          />
-        </div>
+        <TabsContent value="schedule" className="mt-4">
+          {/* Calendar + Stack side by side */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+            <ScheduleCalendar
+              calendar={config.calendar}
+              puzzles={publishedPuzzles}
+              onAssign={handleCalendarAssign}
+            />
 
-        {/* Stack + Fallback */}
-        <div className="flex flex-col gap-6">
-          <PuzzleStack
-            stack={config.stack}
-            puzzles={publishedPuzzles}
-            onChange={handleStackChange}
-          />
-
-          {/* Fallback */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-2">FALLBACK PUZZLE</p>
-            {fallbackPuzzle ? (
-              <div className="border-3 border-border p-3 flex items-start justify-between gap-2">
-                <PuzzleCategoryStack puzzle={fallbackPuzzle} />
-                <div className="flex gap-1 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setIsFallbackOpen(true)}
-                  >
-                    Change
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs text-destructive hover:text-destructive"
-                    onClick={() => handleFallbackChange(null)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">THE STACK</p>
+                <PuzzleStack
+                  stack={config.stack}
+                  puzzles={publishedPuzzles}
+                  onChange={handleStackChange}
+                />
               </div>
-            ) : (
-              <div className="border-3 border-border border-dashed p-4 text-center">
-                <p className="text-xs text-muted-foreground mb-2">No fallback set</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setIsFallbackOpen(true)}
-                >
-                  Set Fallback
-                </Button>
+
+              {/* Fallback */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">FALLBACK</p>
+                {fallbackPuzzle ? (
+                  <div className="border-3 border-dashed border-destructive/30 p-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <PuzzleCategoryStack puzzle={fallbackPuzzle} />
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setIsFallbackOpen(true)}
+                      >
+                        Change
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:text-destructive"
+                        onClick={() => handleFallbackChange(null)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-3 border-dashed border-destructive/30 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-2">No fallback set</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setIsFallbackOpen(true)}
+                    >
+                      Set Fallback
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
+        </TabsContent>
 
-      <Separator className="mb-6" />
-
-      {/* All Puzzles List */}
-      <PuzzleList puzzles={puzzles} calendar={config.calendar} />
+        <TabsContent value="all-puzzles" className="mt-4">
+          <PuzzleList puzzles={puzzles} calendar={config.calendar} />
+        </TabsContent>
+      </Tabs>
 
       {/* ── DIALOGS ── */}
 
@@ -331,7 +372,7 @@ export default function ConnectionsPage() {
             {/* Current active puzzle */}
             {activePuzzle ? (
               <div className="border-3 border-border p-3">
-                <PuzzleCategoryStack puzzle={activePuzzle} size="md" />
+                <PuzzleCategoryStack puzzle={activePuzzle}  />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No puzzle assigned for today.</p>
@@ -355,7 +396,7 @@ export default function ConnectionsPage() {
                 Clear play results for today&apos;s active puzzle.
               </p>
 
-              {!activePuzzleId ? (
+              {!activePuzzle ? (
                 <p className="text-xs text-muted-foreground">No active puzzle to reset.</p>
               ) : (
                 <div className="flex flex-col gap-4">
@@ -485,14 +526,14 @@ export default function ConnectionsPage() {
               className={buttonVariants({ variant: "destructive" })}
               disabled={resetting}
               onClick={async () => {
-                if (!activePuzzleId || !resetUser) return
+                if (!activePuzzle || !resetUser) return
                 setResetting(true)
                 try {
                   const res = await fetch("/api/admin/connections/reset", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                      puzzleId: activePuzzleId,
+                      puzzleId: activePuzzle.id,
                       uid: resetUser.uid,
                     }),
                   })
@@ -531,13 +572,13 @@ export default function ConnectionsPage() {
               className={buttonVariants({ variant: "destructive" })}
               disabled={resetting}
               onClick={async () => {
-                if (!activePuzzleId) return
+                if (!activePuzzle) return
                 setResetting(true)
                 try {
                   const res = await fetch("/api/admin/connections/reset", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ puzzleId: activePuzzleId }),
+                    body: JSON.stringify({ puzzleId: activePuzzle.id }),
                   })
                   if (!res.ok) throw new Error("Reset failed")
                   const data = await res.json()
@@ -599,7 +640,7 @@ export default function ConnectionsPage() {
               </p>
             ) : (
               publishedPuzzles
-                .filter((p) => p.id !== config.calendar[todayKey])
+                .filter((p) => p.id !== activePuzzle?.id)
                 .map((puzzle) => (
                   <button
                     key={puzzle.id}
@@ -629,7 +670,7 @@ export default function ConnectionsPage() {
           </AlertDialogHeader>
           {overrideTarget && (
             <div className="border-3 border-border p-3">
-              <PuzzleCategoryStack puzzle={overrideTarget} size="md" />
+              <PuzzleCategoryStack puzzle={overrideTarget}  />
             </div>
           )}
           <AlertDialogFooter>

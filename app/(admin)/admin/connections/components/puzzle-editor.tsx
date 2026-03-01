@@ -80,12 +80,15 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
 
   const puzzleErrors = useMemo(() => {
     const errors: string[] = []
+    if (!title.trim()) {
+      errors.push("Title is required")
+    }
     const diffs = categories.map((c) => c.difficulty)
     if (new Set(diffs).size !== 4) {
       errors.push("Multiple categories share the same difficulty — each must be unique")
     }
     return errors
-  }, [categories])
+  }, [title, categories])
 
   const isValid =
     puzzleErrors.length === 0 &&
@@ -96,13 +99,11 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
   }
 
   const handlePlayerAdded = (playerId: string) => {
-    // Auto-place new player in a random empty board slot
-    const allPlayerIds = categories.flatMap((c) => c.players.map((p) => p.playerId))
-    // If we have fewer than 16 players and tileOrder doesn't include this player yet
     if (!tileOrder.includes(playerId)) {
       setTileOrder((prev) => {
-        // Add to a random position
-        const newOrder = [...prev, playerId]
+        const newOrder = [...prev]
+        const randomIndex = Math.floor(Math.random() * (newOrder.length + 1))
+        newOrder.splice(randomIndex, 0, playerId)
         return newOrder
       })
     }
@@ -236,7 +237,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
       <div className="flex items-end justify-between gap-4">
         <div className="flex-1 max-w-md">
           <label className="text-xs font-semibold text-muted-foreground mb-1 block">
-            TITLE (OPTIONAL)
+            TITLE
           </label>
           <Input
             value={title}
@@ -245,56 +246,121 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
           />
         </div>
 
-        <div className="flex gap-2 shrink-0">
-          {/* Delete / Discard */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Status indicator for existing puzzles */}
           {isExisting && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setIsDeleteOpen(true)}
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete
-            </Button>
+            <span className={`text-xs font-semibold mr-1 ${isDraft ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}>
+              {isDraft ? "Draft" : "Published"}
+            </span>
           )}
+
+          {/* New puzzle: Discard + Save Draft + Publish */}
           {!isExisting && (
-            <Button variant="outline" size="sm" onClick={handleDiscard}>
-              Discard
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={handleDiscard}>
+                Discard
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSave("draft")}
+                disabled={saving || !isValid}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1" />
+                )}
+                Save Draft
+              </Button>
+              <Button
+                size="sm"
+                className="btn-chamfer"
+                onClick={() => {
+                  if (!isValid) {
+                    toast.error("Fix validation errors before publishing")
+                    return
+                  }
+                  setIsPublishOpen(true)
+                }}
+                disabled={saving || !isValid}
+              >
+                <Send className="h-4 w-4 mr-1" />
+                Publish
+              </Button>
+            </>
           )}
 
-          {/* Save Draft */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleSave("draft")}
-            disabled={saving || !isValid}
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
-              <Save className="h-4 w-4 mr-1" />
-            )}
-            Save Draft
-          </Button>
+          {/* Editing draft: Delete + Save Changes + Publish */}
+          {isExisting && isDraft && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setIsDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSave("draft")}
+                disabled={saving || !isValid}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1" />
+                )}
+                Save Changes
+              </Button>
+              <Button
+                size="sm"
+                className="btn-chamfer"
+                onClick={() => {
+                  if (!isValid) {
+                    toast.error("Fix validation errors before publishing")
+                    return
+                  }
+                  setIsPublishOpen(true)
+                }}
+                disabled={saving || !isValid}
+              >
+                <Send className="h-4 w-4 mr-1" />
+                Publish
+              </Button>
+            </>
+          )}
 
-          {/* Publish */}
-          <Button
-            size="sm"
-            className="btn-chamfer"
-            onClick={() => {
-              if (!isValid) {
-                toast.error("Fix validation errors before publishing")
-                return
-              }
-              setIsPublishOpen(true)
-            }}
-            disabled={saving || !isValid}
-          >
-            <Send className="h-4 w-4 mr-1" />
-            Publish
-          </Button>
+          {/* Editing published: Delete + Save Changes */}
+          {isExisting && !isDraft && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setIsDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete
+              </Button>
+              <Button
+                size="sm"
+                className="btn-chamfer"
+                onClick={() => handleSave("published")}
+                disabled={saving || !isValid}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1" />
+                )}
+                Save Changes
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
