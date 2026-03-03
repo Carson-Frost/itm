@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -19,7 +19,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, X, Plus, ChevronUp, ChevronDown } from "lucide-react"
+import { Search, X, Plus, Check, ChevronUp, ChevronDown } from "lucide-react"
 import {
   nflTeamsByName,
   nflDivisions,
@@ -119,6 +119,7 @@ interface PlayerSearchProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelectPlayer: (player: ConnectionsPlayer) => void
+  onRemovePlayer?: (playerId: string) => void
   existingPlayerIds: Set<string>
 }
 
@@ -166,6 +167,7 @@ export function PlayerSearch({
   open,
   onOpenChange,
   onSelectPlayer,
+  onRemovePlayer,
   existingPlayerIds,
 }: PlayerSearchProps) {
   const [search, setSearch] = useState("")
@@ -545,27 +547,32 @@ export function PlayerSearch({
                         return (
                           <tr
                             key={`${player.playerId}-${player.season}`}
-                            className={`
-                              border-b border-border/50 transition-colors
-                              ${isAdded ? "opacity-40" : "hover:bg-muted/50 cursor-pointer"}
-                            `}
+                            className="border-b border-border/50 transition-colors hover:bg-muted/50 cursor-pointer"
                             onClick={() => {
-                              if (isAdded) return
-                              onSelectPlayer({
-                                name: player.name,
-                                playerId: player.playerId,
-                                headshotUrl: player.headshotUrl,
-                              })
+                              if (isAdded) {
+                                onRemovePlayer?.(player.playerId)
+                              } else {
+                                onSelectPlayer({
+                                  name: player.name,
+                                  playerId: player.playerId,
+                                  headshotUrl: player.headshotUrl,
+                                })
+                              }
                             }}
                           >
                             <td className="sticky left-0 bg-background px-2 py-1.5 text-center z-10">
-                              {isAdded ? (
-                                <span className="text-muted-foreground text-[10px]">
-                                  ✓
-                                </span>
-                              ) : (
-                                <Plus className="h-3.5 w-3.5 text-muted-foreground mx-auto" />
-                              )}
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className={`h-7 w-7 ${isAdded ? "border-primary bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive hover:border-destructive" : ""}`}
+                                tabIndex={-1}
+                              >
+                                {isAdded ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
                             </td>
                             <td
                               className="sticky bg-background px-2 py-1.5 z-10"

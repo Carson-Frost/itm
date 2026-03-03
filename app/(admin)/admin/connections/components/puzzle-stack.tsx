@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { GripVertical, Plus, X } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
@@ -137,12 +138,14 @@ function SortableItem({
         </span>
       )}
 
-      <button
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:border-destructive shrink-0"
         onClick={onRemove}
-        className="text-muted-foreground/30 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 shrink-0"
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -185,26 +188,28 @@ export function PuzzleStack({
   const availablePuzzles = puzzles.filter((p) => !stackSet.has(p.id))
 
   return (
-    <div className="border-3 border-border">
+    <div className="border-3 border-border flex-1 min-h-0 flex flex-col">
       {/* Stack header with add button */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/20">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/20 shrink-0">
         <span className="text-xs text-muted-foreground">
           {stack.length} {stack.length === 1 ? "puzzle" : "puzzles"} queued
         </span>
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
           onClick={() => setIsAddOpen(true)}
-          className="h-6 w-6 flex items-center justify-center border border-border text-muted-foreground hover:text-primary hover:border-primary transition-colors"
-          title="Add to stack"
         >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add
+        </Button>
       </div>
 
       {/* Stack items */}
-      <div className="max-h-[360px] overflow-y-auto">
+      <div className="overflow-y-auto flex-1 min-h-0">
         {stack.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">Stack is empty</p>
+            <p className="text-sm text-muted-foreground">Backlog is empty</p>
             <p className="text-[10px] text-muted-foreground mt-1">Top puzzle serves when no calendar assignment exists</p>
           </div>
         ) : (
@@ -232,7 +237,7 @@ export function PuzzleStack({
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add to Stack</DialogTitle>
+            <DialogTitle>Add to Backlog</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
             {availablePuzzles.length === 0 ? (

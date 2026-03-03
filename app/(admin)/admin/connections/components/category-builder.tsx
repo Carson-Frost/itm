@@ -13,14 +13,16 @@ interface CategoryBuilderProps {
   category: ConnectionsCategory
   onChange: (category: ConnectionsCategory) => void
   existingPlayerIds: Set<string>
-  errors: string[]
+  missingName: boolean
+  missingPlayers: number
 }
 
 export function CategoryBuilder({
   category,
   onChange,
   existingPlayerIds,
-  errors,
+  missingName,
+  missingPlayers,
 }: CategoryBuilderProps) {
   const [isPlayerSearchOpen, setIsPlayerSearchOpen] = useState(false)
 
@@ -34,6 +36,7 @@ export function CategoryBuilder({
 
   const handleAddPlayer = (player: ConnectionsPlayer) => {
     if (category.players.length >= 4) return
+    if (existingPlayerIds.has(player.playerId)) return
     onChange({ ...category, players: [...category.players, player] })
   }
 
@@ -52,11 +55,12 @@ export function CategoryBuilder({
         {/* Category name + difficulty color badge + difficulty selector */}
         <div className="flex gap-3 items-end">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center mb-1">
               <label className="text-xs font-semibold text-muted-foreground">
                 CATEGORY NAME
               </label>
-              <span className={`text-[10px] font-bold uppercase ${diffColor.bg} ${diffColor.text} px-1.5 py-0.5 leading-none`}>
+              {missingName && <span className="text-xs text-destructive ml-1.5">Required</span>}
+              <span className={`text-[10px] font-bold uppercase ${diffColor.bg} ${diffColor.text} px-1.5 py-0.5 leading-none ml-auto`}>
                 {diffColor.label}
               </span>
             </div>
@@ -64,6 +68,7 @@ export function CategoryBuilder({
               value={category.name}
               onChange={(e) => handleNameChange(e.target.value)}
               autoComplete="off"
+              maxLength={30}
             />
           </div>
 
@@ -98,9 +103,12 @@ export function CategoryBuilder({
 
         {/* Player slots — match game tile appearance */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground mb-2 block">
-            PLAYERS ({category.players.length}/4)
-          </label>
+          <div className="flex items-center mb-2">
+            <label className="text-xs font-semibold text-muted-foreground">
+              PLAYERS ({category.players.length}/4)
+            </label>
+            {missingPlayers > 0 && <span className="text-xs text-destructive ml-1.5">Need {missingPlayers} more</span>}
+          </div>
           <div className="grid grid-cols-4 gap-1">
             {category.players.map((player, i) => (
               <div
@@ -128,11 +136,11 @@ export function CategoryBuilder({
 
                 <button
                   onClick={() => handleRemovePlayer(i)}
-                  className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center
-                    bg-background/80 text-muted-foreground hover:text-destructive
-                    opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-0.5 right-0.5 h-6 w-6 flex items-center justify-center
+                    bg-background/90 border border-border text-muted-foreground hover:text-destructive hover:border-destructive
+                    opacity-0 group-hover:opacity-100 transition-all"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
@@ -140,29 +148,26 @@ export function CategoryBuilder({
             {category.players.length < 4 && (
               <button
                 onClick={() => setIsPlayerSearchOpen(true)}
-                className="h-16 sm:h-20 flex items-center justify-center border-3 border-dashed border-border
-                  text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
+                className="h-16 sm:h-20 flex flex-col items-center justify-center gap-1 border-3 border-dashed border-muted-foreground/30
+                  text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors cursor-pointer"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
+                <span className="text-[9px] font-semibold uppercase">Add</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Inline errors */}
-        {errors.length > 0 && (
-          <div className="text-xs text-destructive flex flex-col gap-0.5">
-            {errors.map((err, i) => (
-              <p key={i}>{err}</p>
-            ))}
-          </div>
-        )}
       </div>
 
       <PlayerSearch
         open={isPlayerSearchOpen}
         onOpenChange={setIsPlayerSearchOpen}
         onSelectPlayer={handleAddPlayer}
+        onRemovePlayer={(playerId) => {
+          const index = category.players.findIndex((p) => p.playerId === playerId)
+          if (index !== -1) handleRemovePlayer(index)
+        }}
         existingPlayerIds={existingPlayerIds}
       />
     </div>

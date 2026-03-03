@@ -69,22 +69,6 @@ export async function GET() {
         }
       }
 
-      // 3. Fallback
-      if (schedule.fallbackPuzzleId) {
-        const puzzle = await db
-          .collection("connections_puzzles")
-          .doc(schedule.fallbackPuzzleId)
-          .get()
-        if (puzzle.exists && puzzle.data()?.status === "published") {
-          return NextResponse.json({
-            id: puzzle.id,
-            date: dateKey,
-            ...puzzle.data(),
-            createdAt: puzzle.data()?.createdAt?.toDate?.()?.toISOString() || null,
-            updatedAt: puzzle.data()?.updatedAt?.toDate?.()?.toISOString() || null,
-          })
-        }
-      }
     }
 
     return NextResponse.json(

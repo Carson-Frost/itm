@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
-import { Pencil } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { AlertTriangle } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
 
-type SourceType = "calendar" | "stack" | "fallback" | null
+type SourceType = "calendar" | "backlog" | null
 
 interface CommandStripProps {
   activePuzzle: ConnectionsPuzzle | null
@@ -15,6 +15,7 @@ interface CommandStripProps {
   tomorrowPuzzle: ConnectionsPuzzle | null
   tomorrowSource: SourceType
   onEditActive: () => void
+  onEditOnDeck: () => void
 }
 
 function Countdown() {
@@ -42,10 +43,9 @@ function Countdown() {
   return timeLeft
 }
 
-const SOURCE_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  calendar: { label: "Scheduled", variant: "default" },
-  stack: { label: "From Stack", variant: "secondary" },
-  fallback: { label: "Fallback", variant: "destructive" },
+const SOURCE_CONFIG: Record<string, { label: string; className: string }> = {
+  calendar: { label: "Scheduled", className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30" },
+  backlog: { label: "Backlog", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" },
 }
 
 function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
@@ -56,20 +56,28 @@ function PuzzlePanel({
   label,
   puzzle,
   source,
-  editAction,
+  onEdit,
 }: {
   label: string
   puzzle: ConnectionsPuzzle | null
   source: SourceType
-  editAction?: { type: "button"; onClick: () => void } | { type: "link"; href: string }
+  onEdit: () => void
 }) {
   if (!puzzle) {
     return (
       <div className="p-4">
-        <p className="text-xs font-semibold text-muted-foreground mb-3">{label}</p>
-        <div className="border-3 border-dashed border-destructive/30 p-3 text-center">
-          <p className="text-sm font-medium text-destructive">No Puzzle</p>
-          <p className="text-[10px] text-muted-foreground">Add puzzles to the calendar or stack</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onEdit}>
+            Edit
+          </Button>
+        </div>
+        <div className="border-3 border-dashed border-destructive p-3 text-center">
+          <div className="flex items-center justify-center gap-1.5 mb-1">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <p className="text-sm font-bold text-destructive">NO PUZZLE SCHEDULED</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Players will see an error</p>
         </div>
       </div>
     )
@@ -89,23 +97,9 @@ function PuzzlePanel({
           )}
           <p className="text-xs font-semibold text-muted-foreground">{label}</p>
         </div>
-        {editAction && (
-          editAction.type === "button" ? (
-            <button
-              onClick={editAction.onClick}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <Link
-              href={editAction.href}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Link>
-          )
-        )}
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onEdit}>
+          Edit
+        </Button>
       </div>
 
       {/* Title + source badge */}
@@ -114,7 +108,7 @@ function PuzzlePanel({
           {puzzle.title || <span className="italic text-muted-foreground">Untitled</span>}
         </p>
         {source && (
-          <Badge variant={SOURCE_CONFIG[source].variant} className="text-[10px] shrink-0">
+          <Badge variant="outline" className={`text-[10px] shrink-0 ${SOURCE_CONFIG[source].className}`}>
             {SOURCE_CONFIG[source].label}
           </Badge>
         )}
@@ -151,6 +145,7 @@ export function CommandStrip({
   tomorrowPuzzle,
   tomorrowSource,
   onEditActive,
+  onEditOnDeck,
 }: CommandStripProps) {
   return (
     <div className="border-3 border-border grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
@@ -159,7 +154,7 @@ export function CommandStrip({
         label="TODAY'S PUZZLE"
         puzzle={activePuzzle}
         source={activeSource}
-        editAction={activePuzzle ? { type: "button", onClick: onEditActive } : undefined}
+        onEdit={onEditActive}
       />
 
       {/* COUNTDOWN */}
@@ -182,7 +177,7 @@ export function CommandStrip({
         label="ON DECK"
         puzzle={tomorrowPuzzle}
         source={tomorrowSource}
-        editAction={tomorrowPuzzle ? { type: "link", href: `/admin/connections/${tomorrowPuzzle.id}` } : undefined}
+        onEdit={onEditOnDeck}
       />
     </div>
   )

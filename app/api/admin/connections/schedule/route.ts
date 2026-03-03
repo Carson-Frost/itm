@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
         calendar: {},
         stack: [],
         stackPointer: 0,
-        fallbackPuzzleId: null,
       }
       return NextResponse.json(defaultConfig)
     }
@@ -46,7 +45,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { calendar, stack, stackPointer, fallbackPuzzleId } = body as ConnectionsScheduleConfig
+    const { calendar, stack, stackPointer } = body as ConnectionsScheduleConfig
 
     const db = getAdminFirestore()
     const docRef = db.doc(SCHEDULE_DOC)
@@ -56,7 +55,6 @@ export async function PUT(req: NextRequest) {
       calendar: calendar || {},
       stack: stack || [],
       stackPointer: stackPointer ?? 0,
-      fallbackPuzzleId: fallbackPuzzleId ?? null,
     }
 
     await docRef.set(data)

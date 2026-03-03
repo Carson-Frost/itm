@@ -24,9 +24,16 @@ import {
 import { buttonVariants } from "@/components/ui/button"
 import { CategoryBuilder } from "./category-builder"
 import { BoardLayout } from "./board-layout"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Loader2, Save, Send, Trash2, CalendarDays, Layers, Check } from "lucide-react"
 import { toast } from "sonner"
 import type { ConnectionsCategory, ConnectionsPuzzle } from "@/lib/types/connections"
+import { DIFFICULTY_COLORS } from "@/lib/types/connections"
 
 function emptyCategory(difficulty: 1 | 2 | 3 | 4): ConnectionsCategory {
   return { name: "", difficulty, players: [] }
@@ -68,31 +75,55 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
   }, [categories])
 
   const categoryErrors = useMemo(() => {
-    return categories.map((cat) => {
-      const errors: string[] = []
-      if (!cat.name.trim()) errors.push("Needs a name")
-      if (cat.players.length < 4) {
-        errors.push(`${4 - cat.players.length} more player(s) needed`)
-      }
-      return errors
-    })
+    return categories.map((cat) => ({
+      missingName: !cat.name.trim(),
+      missingPlayers: cat.players.length < 4 ? 4 - cat.players.length : 0,
+    }))
   }, [categories])
+
+  const isTitleMissing = !title.trim()
 
   const puzzleErrors = useMemo(() => {
     const errors: string[] = []
-    if (!title.trim()) {
-      errors.push("Title is required")
-    }
     const diffs = categories.map((c) => c.difficulty)
-    if (new Set(diffs).size !== 4) {
-      errors.push("Multiple categories share the same difficulty — each must be unique")
+    const seen = new Map<number, number>()
+    for (const d of diffs) {
+      seen.set(d, (seen.get(d) || 0) + 1)
+    }
+    const duplicated = [...seen.entries()].filter(([, count]) => count > 1).map(([d]) => d)
+    const missing = [1, 2, 3, 4].filter((d) => !seen.has(d))
+    if (duplicated.length > 0) {
+      const dupNames = duplicated.map((d) => DIFFICULTY_COLORS[d]?.label || `${d}`).join(", ")
+      const misNames = missing.map((d) => DIFFICULTY_COLORS[d]?.label || `${d}`).join(", ")
+      errors.push(`Duplicate difficulty: ${dupNames}. Missing: ${misNames}`)
     }
     return errors
-  }, [title, categories])
+  }, [categories])
 
   const isValid =
+    !isTitleMissing &&
     puzzleErrors.length === 0 &&
-    categoryErrors.every((e) => e.length === 0)
+    categoryErrors.every((e) => !e.missingName && e.missingPlayers === 0)
+
+  const validationTooltip = useMemo(() => {
+    if (isValid) return null
+    const lines: string[] = []
+    if (isTitleMissing) lines.push("Missing title")
+    // Missing names
+    const missingNames = categories
+      .map((cat, i) => ({ cat, err: categoryErrors[i] }))
+      .filter(({ err }) => err.missingName)
+      .map(({ cat }) => DIFFICULTY_COLORS[cat.difficulty]?.label || `${cat.difficulty}`)
+    if (missingNames.length > 0) lines.push(`${missingNames.join(", ")}: Missing name`)
+    // Missing players
+    const missingPlayers = categories
+      .map((cat, i) => ({ cat, err: categoryErrors[i] }))
+      .filter(({ err }) => err.missingPlayers > 0)
+      .map(({ cat }) => DIFFICULTY_COLORS[cat.difficulty]?.label || `${cat.difficulty}`)
+    if (missingPlayers.length > 0) lines.push(`${missingPlayers.join(", ")}: Missing players`)
+    if (puzzleErrors.length > 0) lines.push(...puzzleErrors)
+    return lines
+  }, [isValid, isTitleMissing, categories, categoryErrors, puzzleErrors])
 
   const handleCategoryChange = (index: number, updated: ConnectionsCategory) => {
     setCategories((prev) => prev.map((c, i) => (i === index ? updated : c)))
@@ -202,10 +233,10 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...config, stack: newStack }),
           })
-          toast.success("Added to top of stack")
+          toast.success("Added to top of backlog")
         }
       } catch {
-        toast.error("Published but failed to add to stack")
+        toast.error("Published but failed to add to backlog")
       }
     }
 
@@ -236,132 +267,179 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
       {/* Title row with actions */}
       <div className="flex items-end justify-between gap-4">
         <div className="flex-1 max-w-md">
-          <label className="text-xs font-semibold text-muted-foreground mb-1 block">
-            TITLE
-          </label>
+          <div className="flex items-center mb-1">
+            <label className="text-xs font-semibold text-muted-foreground">TITLE</label>
+            {isTitleMissing && <span className="text-xs text-destructive ml-1.5">Required</span>}
+          </div>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoComplete="off"
+            maxLength={30}
           />
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Status indicator for existing puzzles */}
-          {isExisting && (
-            <span className={`text-xs font-semibold mr-1 ${isDraft ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}>
-              {isDraft ? "Draft" : "Published"}
-            </span>
-          )}
+        <TooltipProvider delayDuration={200}>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Status indicator for existing puzzles */}
+            {isExisting && (
+              <span className={`text-xs font-semibold mr-1 ${isDraft ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}>
+                {isDraft ? "Draft" : "Published"}
+              </span>
+            )}
 
-          {/* New puzzle: Discard + Save Draft + Publish */}
-          {!isExisting && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleDiscard}>
-                Discard
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSave("draft")}
-                disabled={saving || !isValid}
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1" />
-                )}
-                Save Draft
-              </Button>
-              <Button
-                size="sm"
-                className="btn-chamfer"
-                onClick={() => {
-                  if (!isValid) {
-                    toast.error("Fix validation errors before publishing")
-                    return
-                  }
-                  setIsPublishOpen(true)
-                }}
-                disabled={saving || !isValid}
-              >
-                <Send className="h-4 w-4 mr-1" />
-                Publish
-              </Button>
-            </>
-          )}
+            {/* New puzzle: Discard + Save Draft + Publish */}
+            {!isExisting && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleDiscard}>
+                  Discard
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSave("draft")}
+                        disabled={saving || !isValid}
+                      >
+                        {saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-1" />
+                        )}
+                        Save Draft
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {validationTooltip && (
+                    <TooltipContent side="top" className="text-xs max-w-xs">
+                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        size="sm"
+                        className="btn-chamfer"
+                        onClick={() => setIsPublishOpen(true)}
+                        disabled={saving || !isValid}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        Publish
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {validationTooltip && (
+                    <TooltipContent side="top" className="text-xs max-w-xs">
+                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </>
+            )}
 
-          {/* Editing draft: Delete + Save Changes + Publish */}
-          {isExisting && isDraft && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setIsDeleteOpen(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSave("draft")}
-                disabled={saving || !isValid}
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1" />
-                )}
-                Save Changes
-              </Button>
-              <Button
-                size="sm"
-                className="btn-chamfer"
-                onClick={() => {
-                  if (!isValid) {
-                    toast.error("Fix validation errors before publishing")
-                    return
-                  }
-                  setIsPublishOpen(true)
-                }}
-                disabled={saving || !isValid}
-              >
-                <Send className="h-4 w-4 mr-1" />
-                Publish
-              </Button>
-            </>
-          )}
+            {/* Editing draft: Delete + Save Changes + Publish */}
+            {isExisting && isDraft && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setIsDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSave("draft")}
+                        disabled={saving || !isValid}
+                      >
+                        {saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-1" />
+                        )}
+                        Save Changes
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {validationTooltip && (
+                    <TooltipContent side="top" className="text-xs max-w-xs">
+                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        size="sm"
+                        className="btn-chamfer"
+                        onClick={() => setIsPublishOpen(true)}
+                        disabled={saving || !isValid}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        Publish
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {validationTooltip && (
+                    <TooltipContent side="top" className="text-xs max-w-xs">
+                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </>
+            )}
 
-          {/* Editing published: Delete + Save Changes */}
-          {isExisting && !isDraft && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setIsDeleteOpen(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
-              <Button
-                size="sm"
-                className="btn-chamfer"
-                onClick={() => handleSave("published")}
-                disabled={saving || !isValid}
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1" />
-                )}
-                Save Changes
-              </Button>
-            </>
-          )}
-        </div>
+            {/* Editing published: Delete + Save Changes */}
+            {isExisting && !isDraft && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setIsDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        size="sm"
+                        className="btn-chamfer"
+                        onClick={() => handleSave("published")}
+                        disabled={saving || !isValid}
+                      >
+                        {saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-1" />
+                        )}
+                        Save Changes
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {validationTooltip && (
+                    <TooltipContent side="top" className="text-xs max-w-xs">
+                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </>
+            )}
+          </div>
+        </TooltipProvider>
       </div>
 
       {/* Puzzle-wide errors */}
@@ -385,7 +463,8 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               category={cat}
               onChange={(updated) => handleCategoryChangeWithAutoPlace(i, updated)}
               existingPlayerIds={existingPlayerIds}
-              errors={categoryErrors[i]}
+              missingName={categoryErrors[i].missingName}
+              missingPlayers={categoryErrors[i].missingPlayers}
             />
           ))}
         </div>
@@ -463,7 +542,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               </div>
             )}
 
-            {/* Add to stack */}
+            {/* Add to backlog */}
             <button
               className="border-3 border-border p-3 text-left transition-colors hover:bg-muted/20"
               onClick={() => handlePublishWithSchedule("stack")}
@@ -471,8 +550,8 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               <div className="flex items-center gap-2">
                 <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-sm font-medium">Add to stack</p>
-                  <p className="text-xs text-muted-foreground">Add to top of the puzzle stack</p>
+                  <p className="text-sm font-medium">Add to backlog</p>
+                  <p className="text-xs text-muted-foreground">Add to top of the puzzle backlog</p>
                 </div>
               </div>
             </button>

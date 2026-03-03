@@ -12,6 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { Search, X, ChevronUp, ChevronDown, Pencil } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
@@ -29,6 +34,7 @@ interface PuzzleListProps {
   calendar: Record<string, string>
   stack: string[]
   stackPointer: number
+  onSelect?: (puzzle: ConnectionsPuzzle) => void
 }
 
 function getTodayKey(): string {
@@ -127,7 +133,8 @@ function getOrdinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleListProps) {
+export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }: PuzzleListProps) {
+  const isSelectMode = !!onSelect
   const [statusFilter, setStatusFilter] = useState("all")
   const [authorFilter, setAuthorFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -156,7 +163,7 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleLis
       if (date >= todayKey) {
         const existing = map.get(puzzleId)
         // Keep the earliest future date
-        if (!existing || !existing.startsWith("Stack")) {
+        if (!existing || !existing.startsWith("Backlog")) {
           const d = new Date(date + "T00:00:00")
           map.set(puzzleId, d.toLocaleDateString("default", { month: "short", day: "numeric" }))
         }
@@ -168,7 +175,7 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleLis
       const puzzleId = stack[i]
       if (!map.has(puzzleId)) {
         const position = i - stackPointer + 1
-        map.set(puzzleId, `${getOrdinal(position)} in Stack`)
+        map.set(puzzleId, `${getOrdinal(position)} in Backlog`)
       }
     }
 
@@ -297,22 +304,28 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleLis
             const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
             const scheduled = scheduledMap.get(puzzle.id)
 
-            return (
-              <div key={puzzle.id} className="border-b border-border/50 group/row">
-                {/* Main row */}
-                <div className="flex items-center gap-3 px-4 py-4 hover:bg-muted/20 transition-colors">
+            const rowContent = (
+              <>
                   {/* Left: title block with author + status below */}
                   <div className="w-44 shrink-0 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <Link
-                        href={`/admin/connections/${puzzle.id}`}
-                        className="text-sm font-medium truncate hover:underline"
-                      >
-                        {puzzle.title || (
-                          <span className="text-muted-foreground italic">Untitled</span>
-                        )}
-                      </Link>
-                      {isEditable && (
+                      {isSelectMode ? (
+                        <span className="text-sm font-medium truncate">
+                          {puzzle.title || (
+                            <span className="text-muted-foreground italic">Untitled</span>
+                          )}
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/admin/connections/${puzzle.id}`}
+                          className="text-sm font-medium truncate hover:underline"
+                        >
+                          {puzzle.title || (
+                            <span className="text-muted-foreground italic">Untitled</span>
+                          )}
+                        </Link>
+                      )}
+                      {!isSelectMode && isEditable && (
                         <Link
                           href={`/admin/connections/${puzzle.id}`}
                           className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-all shrink-0"
@@ -356,24 +369,11 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleLis
                     </p>
                   </div>
 
-                  {/* Categories — 2x2 grid */}
-                  <div className="hidden md:grid grid-cols-2 gap-1 flex-1 min-w-0">
-                    {sorted.map((cat) => {
-                      const colors = DIFFICULTY_COLORS[cat.difficulty]
-                      return (
-                        <span
-                          key={cat.difficulty}
-                          className={`${colors.bg} ${colors.text} text-[11px] font-bold px-2 py-1 truncate block`}
-                          title={cat.name}
-                        >
-                          {cat.name || "—"}
-                        </span>
-                      )
-                    })}
-                  </div>
+                  {/* Spacer to push action to right */}
+                  <div className="flex-1" />
 
                   {/* Action: expand stats */}
-                  {hasStats ? (
+                  {!isSelectMode && hasStats ? (
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : puzzle.id)}
                       className="w-8 h-8 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
@@ -385,18 +385,86 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer }: PuzzleLis
                         <ChevronUp className="h-4 w-4" />
                       )}
                     </button>
-                  ) : (
+                  ) : !isSelectMode ? (
                     <div className="w-8 shrink-0" />
-                  )}
-                </div>
+                  ) : null}
+              </>
+            )
 
-                {/* Expanded stats row */}
-                {isExpanded && hasStats && (
-                  <div className="bg-muted/10 border-t border-border/30">
-                    <InlineStats puzzleId={puzzle.id} />
+            const hoverContent = (
+              <HoverCardContent
+                side="right"
+                align="start"
+                sideOffset={8}
+                className="w-72 p-0 border-3 border-border"
+              >
+                <div className="px-3 pt-3 pb-2">
+                  <p className="text-sm font-semibold leading-tight truncate">
+                    {puzzle.title || <span className="italic text-muted-foreground">Untitled</span>}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {puzzle.createdBy?.email && (
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        {getAuthorDisplay(puzzle.createdBy)}
+                      </span>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] leading-none py-0 px-1.5 ${getStatusBadgeClasses(displayStatus)}`}
+                    >
+                      {displayStatus}
+                    </Badge>
+                  </div>
+                </div>
+                {sorted.length > 0 && (
+                  <div className="flex flex-col">
+                    {sorted.map((cat) => {
+                      const colors = DIFFICULTY_COLORS[cat.difficulty]
+                      return (
+                        <div key={cat.difficulty} className="border-t border-border">
+                          <div className={`${colors.bg} ${colors.text} px-3 py-1`}>
+                            <p className="text-[11px] font-bold">{cat.name || "—"}</p>
+                          </div>
+                          <div className="px-3 py-1.5">
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                              {cat.players?.map((p) => p.name).join(", ") || "No players"}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
-              </div>
+              </HoverCardContent>
+            )
+
+            return (
+              <HoverCard key={puzzle.id} openDelay={400} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <div className="border-b border-border/50 group/row">
+                    {isSelectMode ? (
+                      <button
+                        className="flex items-center gap-3 px-4 py-4 hover:bg-primary/5 transition-colors w-full text-left"
+                        onClick={() => onSelect!(puzzle)}
+                      >
+                        {rowContent}
+                      </button>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 px-4 py-4 hover:bg-muted/20 transition-colors">
+                          {rowContent}
+                        </div>
+                        {isExpanded && hasStats && (
+                          <div className="bg-muted/10 border-t border-border/30">
+                            <InlineStats puzzleId={puzzle.id} />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </HoverCardTrigger>
+                {hoverContent}
+              </HoverCard>
             )
           })
         )}

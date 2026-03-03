@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
@@ -23,8 +24,16 @@ import {
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, X, RefreshCw, RotateCcw, Search, Check, Plus } from "lucide-react"
-import Link from "next/link"
+import {
+  Loader2,
+  X,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Check,
+  Plus,
+  ExternalLink,
+} from "lucide-react"
 import { toast } from "sonner"
 import { CommandStrip } from "./components/command-strip"
 import { ScheduleCalendar } from "./components/schedule-calendar"
@@ -36,19 +45,28 @@ import type {
   ConnectionsPuzzle,
 } from "@/lib/types/connections"
 
+type PickerTarget =
+  | { type: "today" }
+  | { type: "on-deck" }
+  | { type: "calendar"; date: string }
+
 export default function ConnectionsPage() {
   const [config, setConfig] = useState<ConnectionsScheduleConfig | null>(null)
   const [puzzles, setPuzzles] = useState<ConnectionsPuzzle[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Active puzzle edit dialog
-  const [isActiveEditOpen, setIsActiveEditOpen] = useState(false)
-  const [isOverrideOpen, setIsOverrideOpen] = useState(false)
+  // Management dialogs
+  const [managementDialog, setManagementDialog] = useState<"today" | "on-deck" | null>(null)
+
+  // Puzzle picker
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null)
+
+  // Override confirmation (when changing today's active puzzle)
   const [overrideTarget, setOverrideTarget] = useState<ConnectionsPuzzle | null>(null)
 
-  // Fallback picker
-  const [isFallbackOpen, setIsFallbackOpen] = useState(false)
+  // Remove today confirmation
+  const [isRemoveTodayOpen, setIsRemoveTodayOpen] = useState(false)
 
   // Reset state
   const [resetUser, setResetUser] = useState<{ uid: string; username: string; email: string } | null>(null)
@@ -159,28 +177,68 @@ export default function ConnectionsPage() {
     saveConfig({ ...config, stack })
   }
 
-  const handleFallbackChange = (puzzleId: string | null) => {
-    if (!config) return
-    saveConfig({ ...config, fallbackPuzzleId: puzzleId })
-    setIsFallbackOpen(false)
-  }
-
   const todayKey = (() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
   })()
 
-  const handleOverrideActive = (puzzle: ConnectionsPuzzle) => {
-    setOverrideTarget(puzzle)
+  const tomorrowKey = (() => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`
+  })()
+
+  // Picker: user selected a puzzle from the full list
+  const handlePickerSelect = (puzzle: ConnectionsPuzzle) => {
+    if (!pickerTarget || !config) return
+
+    let dateKey: string
+    if (pickerTarget.type === "today") {
+      dateKey = todayKey
+    } else if (pickerTarget.type === "on-deck") {
+      dateKey = tomorrowKey
+    } else {
+      dateKey = pickerTarget.date
+    }
+
+    // If replacing today's active puzzle, need confirmation + reset
+    if (dateKey === todayKey && activePuzzle) {
+      setOverrideTarget(puzzle)
+      setPickerTarget(null)
+    } else {
+      handleCalendarAssign(dateKey, puzzle.id)
+      setPickerTarget(null)
+    }
   }
 
-  const confirmOverride = () => {
+  // Override confirmation: change today's active puzzle
+  const confirmOverride = async () => {
     if (!config || !overrideTarget) return
+    const oldPuzzleId = activePuzzle?.id
     const newCalendar = { ...config.calendar, [todayKey]: overrideTarget.id }
-    saveConfig({ ...config, calendar: newCalendar })
+    await saveConfig({ ...config, calendar: newCalendar })
+
+    // Reset play data for the old puzzle so it becomes reusable
+    if (oldPuzzleId) {
+      try {
+        await fetch("/api/admin/connections/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ puzzleId: oldPuzzleId }),
+        })
+      } catch {
+        toast.error("Failed to reset old puzzle data")
+      }
+    }
+
     setOverrideTarget(null)
-    setIsOverrideOpen(false)
-    setIsActiveEditOpen(false)
+  }
+
+  // Remove today's puzzle confirmation
+  const confirmRemoveToday = () => {
+    handleCalendarAssign(todayKey, null)
+    setIsRemoveTodayOpen(false)
+    setManagementDialog(null)
   }
 
   const publishedPuzzles = puzzles.filter((p) => p.status === "published")
@@ -200,58 +258,45 @@ export default function ConnectionsPage() {
 
   if (!config) return null
 
-  // Compute today's active puzzle using 3-tier logic: calendar → stack[stackPointer] → fallback
+  // Compute today's active puzzle: calendar → backlog[stackPointer]
   const { activePuzzle, activeSource } = (() => {
-    // 1. Calendar assignment
     const calendarId = config.calendar[todayKey]
     if (calendarId) {
       const p = puzzles.find((pz) => pz.id === calendarId)
       if (p) return { activePuzzle: p, activeSource: "calendar" as const }
     }
-    // 2. Stack[stackPointer]
     const pointer = config.stackPointer ?? 0
     if (config.stack.length > pointer) {
       const p = puzzles.find((pz) => pz.id === config.stack[pointer])
-      if (p) return { activePuzzle: p, activeSource: "stack" as const }
-    }
-    // 3. Fallback
-    if (config.fallbackPuzzleId) {
-      const p = puzzles.find((pz) => pz.id === config.fallbackPuzzleId)
-      if (p) return { activePuzzle: p, activeSource: "fallback" as const }
+      if (p) return { activePuzzle: p, activeSource: "backlog" as const }
     }
     return { activePuzzle: null, activeSource: null }
   })()
 
-  const fallbackPuzzle = config.fallbackPuzzleId
-    ? puzzles.find((p) => p.id === config.fallbackPuzzleId)
-    : null
-
-  // Compute tomorrow's puzzle using 3-tier logic: calendar → stack[0] → fallback
-  const tomorrowKey = (() => {
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    return `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`
-  })()
-
+  // Compute tomorrow's puzzle: calendar → backlog[0]
   const { tomorrowPuzzle, tomorrowSource } = (() => {
-    // 1. Calendar assignment
     const calendarId = config.calendar[tomorrowKey]
     if (calendarId) {
       const p = puzzles.find((pz) => pz.id === calendarId)
       if (p) return { tomorrowPuzzle: p, tomorrowSource: "calendar" as const }
     }
-    // 2. Stack[0]
     if (config.stack.length > 0) {
       const p = puzzles.find((pz) => pz.id === config.stack[0])
-      if (p) return { tomorrowPuzzle: p, tomorrowSource: "stack" as const }
-    }
-    // 3. Fallback
-    if (config.fallbackPuzzleId) {
-      const p = puzzles.find((pz) => pz.id === config.fallbackPuzzleId)
-      if (p) return { tomorrowPuzzle: p, tomorrowSource: "fallback" as const }
+      if (p) return { tomorrowPuzzle: p, tomorrowSource: "backlog" as const }
     }
     return { tomorrowPuzzle: null, tomorrowSource: null }
   })()
+
+  // For on-deck: can only "remove" if it's a calendar assignment
+  const tomorrowIsCalendar = tomorrowSource === "calendar"
+
+  // For today: can only "remove" if it's a calendar assignment
+  const todayIsCalendar = activeSource === "calendar"
+
+  // Dialog puzzle context
+  const dialogPuzzle = managementDialog === "today" ? activePuzzle : tomorrowPuzzle
+  const dialogSource = managementDialog === "today" ? activeSource : tomorrowSource
+  const dialogIsCalendar = managementDialog === "today" ? todayIsCalendar : tomorrowIsCalendar
 
   return (
     <div>
@@ -274,13 +319,14 @@ export default function ConnectionsPage() {
         </Link>
       </div>
 
-      {/* ── TIER 1: Command Strip ── */}
+      {/* ── Command Strip ── */}
       <CommandStrip
         activePuzzle={activePuzzle}
         activeSource={activeSource}
         tomorrowPuzzle={tomorrowPuzzle}
         tomorrowSource={tomorrowSource}
-        onEditActive={() => setIsActiveEditOpen(true)}
+        onEditActive={() => setManagementDialog("today")}
+        onEditOnDeck={() => setManagementDialog("on-deck")}
       />
 
       {/* ── Tabbed Content ── */}
@@ -291,65 +337,21 @@ export default function ConnectionsPage() {
         </TabsList>
 
         <TabsContent value="schedule" className="mt-4">
-          {/* Calendar + Stack side by side */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
             <ScheduleCalendar
               calendar={config.calendar}
               puzzles={publishedPuzzles}
               onAssign={handleCalendarAssign}
+              onRequestChange={(date) => setPickerTarget({ type: "calendar", date })}
             />
 
-            <div className="flex flex-col gap-4">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">THE STACK</p>
-                <PuzzleStack
-                  stack={config.stack}
-                  puzzles={publishedPuzzles}
-                  onChange={handleStackChange}
-                />
-              </div>
-
-              {/* Fallback */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">FALLBACK</p>
-                {fallbackPuzzle ? (
-                  <div className="border-3 border-dashed border-destructive/30 p-3 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <PuzzleCategoryStack puzzle={fallbackPuzzle} />
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setIsFallbackOpen(true)}
-                      >
-                        Change
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs text-destructive hover:text-destructive"
-                        onClick={() => handleFallbackChange(null)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="border-3 border-dashed border-destructive/30 p-4 text-center">
-                    <p className="text-xs text-muted-foreground mb-2">No fallback set</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => setIsFallbackOpen(true)}
-                    >
-                      Set Fallback
-                    </Button>
-                  </div>
-                )}
-              </div>
+            <div className="flex flex-col h-full">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">BACKLOG</p>
+              <PuzzleStack
+                stack={config.stack}
+                puzzles={publishedPuzzles}
+                onChange={handleStackChange}
+              />
             </div>
           </div>
         </TabsContent>
@@ -359,157 +361,284 @@ export default function ConnectionsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── DIALOGS ── */}
+      {/* ═══════════════════════════════════════════════════════
+          DIALOGS
+          ═══════════════════════════════════════════════════════ */}
 
-      {/* Active Puzzle Edit Dialog */}
-      <Dialog open={isActiveEditOpen} onOpenChange={setIsActiveEditOpen}>
+      {/* ── Today / On Deck Management Dialog ── */}
+      <Dialog open={!!managementDialog} onOpenChange={(open) => !open && setManagementDialog(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Active Puzzle</DialogTitle>
+            <DialogTitle>
+              {managementDialog === "today" ? "Today's Puzzle" : "On Deck"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            {/* Current active puzzle */}
-            {activePuzzle ? (
+            {/* Puzzle info block */}
+            {dialogPuzzle ? (
               <div className="border-3 border-border p-3">
-                <PuzzleCategoryStack puzzle={activePuzzle}  />
+                <PuzzleCategoryStack puzzle={dialogPuzzle} />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No puzzle assigned for today.</p>
+              <div className="border-3 border-dashed border-border p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {managementDialog === "today"
+                    ? "No puzzle scheduled for today"
+                    : "No puzzle scheduled for tomorrow"}
+                </p>
+              </div>
             )}
 
-            {/* Change active puzzle */}
-            <Button
-              variant="outline"
-              onClick={() => setIsOverrideOpen(true)}
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Change Active Puzzle
-            </Button>
+            {/* Actions */}
+            {dialogPuzzle ? (
+              <div className="flex flex-col gap-2">
+                <Link href={`/admin/connections/${dialogPuzzle.id}`}>
+                  <Button variant="outline" className="w-full justify-start">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Edit Puzzle
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => {
+                    const target = managementDialog === "today"
+                      ? { type: "today" as const }
+                      : { type: "on-deck" as const }
+                    setManagementDialog(null)
+                    setPickerTarget(target)
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Change Puzzle
+                </Button>
+                {dialogIsCalendar && (
+                  <Button
+                    variant="outline"
+                    className="justify-start text-destructive hover:text-destructive"
+                    onClick={() => {
+                      if (managementDialog === "today") {
+                        setIsRemoveTodayOpen(true)
+                      } else {
+                        handleCalendarAssign(tomorrowKey, null)
+                        setManagementDialog(null)
+                      }
+                    }}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Remove Puzzle
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Button
+                className="btn-chamfer"
+                onClick={() => {
+                  const target = managementDialog === "today"
+                    ? { type: "today" as const }
+                    : { type: "on-deck" as const }
+                  setManagementDialog(null)
+                  setPickerTarget(target)
+                }}
+              >
+                Assign Puzzle
+              </Button>
+            )}
 
-            <Separator />
+            {/* Reset section — only for today's puzzle */}
+            {managementDialog === "today" && dialogPuzzle && (
+              <>
+                <Separator />
 
-            {/* Reset Puzzle Data */}
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Reset Puzzle Data</h3>
-              <p className="text-xs text-muted-foreground mb-3">
-                Clear play results for today&apos;s active puzzle.
-              </p>
+                <div>
+                  <h3 className="text-sm font-semibold mb-1">Reset Puzzle Data</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Clear play results for today&apos;s active puzzle.
+                  </p>
 
-              {!activePuzzle ? (
-                <p className="text-xs text-muted-foreground">No active puzzle to reset.</p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {/* Reset specific user */}
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-                      RESET SPECIFIC USER
-                    </label>
-                    <div className="relative" ref={dropdownRef}>
-                      {resetUser ? (
-                        <div className="border-3 border-border p-3 flex items-center justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{resetUser.username}</p>
-                            <p className="text-xs text-muted-foreground truncate">{resetUser.email}</p>
+                  <div className="flex flex-col gap-4">
+                    {/* Reset specific user */}
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                        RESET SPECIFIC USER
+                      </label>
+                      <div className="relative" ref={dropdownRef}>
+                        {resetUser ? (
+                          <div className="border-3 border-border p-3 flex items-center justify-between">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{resetUser.username}</p>
+                              <p className="text-xs text-muted-foreground truncate">{resetUser.email}</p>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setResetUser(null)
+                                  setUserSearch("")
+                                }}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                disabled={resetting}
+                                onClick={() => setIsResetUserOpen(true)}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                                Reset
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex gap-2 shrink-0">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setResetUser(null)
-                                setUserSearch("")
-                              }}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              disabled={resetting}
-                              onClick={() => setIsResetUserOpen(true)}
-                            >
-                              <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                              Reset
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input
-                              value={userSearch}
-                              onChange={(e) => setUserSearch(e.target.value)}
-                              placeholder="Search by username or email..."
-                              autoComplete="off"
-                              className="pl-9 text-sm"
-                            />
-                            {isSearching && (
-                              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                              <Input
+                                value={userSearch}
+                                onChange={(e) => setUserSearch(e.target.value)}
+                                placeholder="Search by username or email..."
+                                autoComplete="off"
+                                className="pl-9 text-sm"
+                              />
+                              {isSearching && (
+                                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                              )}
+                            </div>
+                            {isUserDropdownOpen && userResults.length > 0 && (
+                              <div className="absolute z-50 top-full left-0 right-0 mt-1 border-3 border-border bg-background max-h-48 overflow-y-auto">
+                                {userResults.map((u) => (
+                                  <button
+                                    key={u.uid}
+                                    className="w-full text-left px-3 py-2 hover:bg-muted/30 transition-colors flex items-center gap-3"
+                                    onClick={() => {
+                                      setResetUser(u)
+                                      setUserSearch("")
+                                      setIsUserDropdownOpen(false)
+                                    }}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium truncate">{u.username}</p>
+                                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                                    </div>
+                                    <Check className="h-3.5 w-3.5 text-muted-foreground/30 shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
                             )}
-                          </div>
-                          {isUserDropdownOpen && userResults.length > 0 && (
-                            <div className="absolute z-50 top-full left-0 right-0 mt-1 border-3 border-border bg-background max-h-48 overflow-y-auto">
-                              {userResults.map((u) => (
-                                <button
-                                  key={u.uid}
-                                  className="w-full text-left px-3 py-2 hover:bg-muted/30 transition-colors flex items-center gap-3"
-                                  onClick={() => {
-                                    setResetUser(u)
-                                    setUserSearch("")
-                                    setIsUserDropdownOpen(false)
-                                  }}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium truncate">{u.username}</p>
-                                    <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                                  </div>
-                                  <Check className="h-3.5 w-3.5 text-muted-foreground/30 shrink-0" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {isUserDropdownOpen && userSearch.trim() && !isSearching && userResults.length === 0 && (
-                            <div className="absolute z-50 top-full left-0 right-0 mt-1 border-3 border-border bg-background px-3 py-3 text-xs text-muted-foreground text-center">
-                              No users found
-                            </div>
-                          )}
-                        </>
-                      )}
+                            {isUserDropdownOpen && userSearch.trim() && !isSearching && userResults.length === 0 && (
+                              <div className="absolute z-50 top-full left-0 right-0 mt-1 border-3 border-border bg-background px-3 py-3 text-xs text-muted-foreground text-center">
+                                No users found
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Reset all users */}
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                        RESET ALL USERS
+                      </label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Clears every user&apos;s result for today&apos;s puzzle.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        disabled={resetting}
+                        onClick={() => setIsResetAllOpen(true)}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        Reset All Users
+                      </Button>
                     </div>
                   </div>
-
-                  <Separator />
-
-                  {/* Reset all users */}
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-                      RESET ALL USERS
-                    </label>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Clears every user&apos;s result for today&apos;s puzzle.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={resetting}
-                      onClick={() => setIsResetAllOpen(true)}
-                    >
-                      <RotateCcw className="h-4 w-4 mr-1" />
-                      Reset All Users
-                    </Button>
-                  </div>
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Reset user confirmation */}
+      {/* ── Remove Today Confirmation ── */}
+      <AlertDialog open={isRemoveTodayOpen} onOpenChange={setIsRemoveTodayOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Today&apos;s Puzzle</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will immediately remove the active puzzle. Players will see an error until a new puzzle is assigned.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={confirmRemoveToday}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Puzzle Picker Dialog ── */}
+      <Dialog open={!!pickerTarget} onOpenChange={(open) => !open && setPickerTarget(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Select Puzzle</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <PuzzleList
+              puzzles={publishedPuzzles}
+              calendar={config.calendar}
+              stack={config.stack}
+              stackPointer={config.stackPointer ?? 0}
+              onSelect={handlePickerSelect}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Override Confirmation (changing today's active puzzle) ── */}
+      <AlertDialog
+        open={!!overrideTarget}
+        onOpenChange={(open) => !open && setOverrideTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Active Puzzle</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will immediately replace today&apos;s active puzzle.
+              Players with an active session will see the new puzzle on refresh.
+              All play data for the current puzzle will be reset.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {overrideTarget && (
+            <div className="border-3 border-border p-3">
+              <PuzzleCategoryStack puzzle={overrideTarget} />
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmOverride}
+              className="btn-chamfer"
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Reset User Confirmation ── */}
       <AlertDialog open={isResetUserOpen} onOpenChange={setIsResetUserOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -556,7 +685,7 @@ export default function ConnectionsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Reset all confirmation */}
+      {/* ── Reset All Confirmation ── */}
       <AlertDialog open={isResetAllOpen} onOpenChange={setIsResetAllOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -592,94 +721,6 @@ export default function ConnectionsPage() {
               }}
             >
               Reset All
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Fallback picker dialog */}
-      <Dialog open={isFallbackOpen} onOpenChange={setIsFallbackOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Select Fallback Puzzle</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {publishedPuzzles.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No published puzzles available
-              </p>
-            ) : (
-              publishedPuzzles.map((puzzle) => (
-                <button
-                  key={puzzle.id}
-                  className={`border-3 p-3 text-left transition-colors hover:bg-muted/20 ${
-                    puzzle.id === config.fallbackPuzzleId
-                      ? "border-primary bg-primary/5"
-                      : "border-border"
-                  }`}
-                  onClick={() => handleFallbackChange(puzzle.id)}
-                >
-                  <PuzzleCategoryStack puzzle={puzzle} />
-                </button>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Active puzzle override picker */}
-      <Dialog open={isOverrideOpen} onOpenChange={setIsOverrideOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Change Active Puzzle</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {publishedPuzzles.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No published puzzles available
-              </p>
-            ) : (
-              publishedPuzzles
-                .filter((p) => p.id !== activePuzzle?.id)
-                .map((puzzle) => (
-                  <button
-                    key={puzzle.id}
-                    className="border-3 border-border p-3 text-left transition-colors hover:bg-muted/20"
-                    onClick={() => handleOverrideActive(puzzle)}
-                  >
-                    <PuzzleCategoryStack puzzle={puzzle} />
-                  </button>
-                ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Override confirmation */}
-      <AlertDialog
-        open={!!overrideTarget}
-        onOpenChange={(open) => !open && setOverrideTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Change Active Puzzle</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will immediately replace today&apos;s active puzzle.
-              Players with an active session will see the new puzzle on refresh.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {overrideTarget && (
-            <div className="border-3 border-border p-3">
-              <PuzzleCategoryStack puzzle={overrideTarget}  />
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmOverride}
-              className="btn-chamfer"
-            >
-              Confirm
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

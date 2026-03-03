@@ -65,32 +65,3 @@ export function PuzzleCategoryStack({
   )
 }
 
-interface MiniCategoryPillsProps {
-  puzzle: ConnectionsPuzzle
-}
-
-export function MiniCategoryPills({ puzzle }: MiniCategoryPillsProps) {
-  const sorted = [...(puzzle.categories || [])]
-    .sort((a, b) => a.difficulty - b.difficulty)
-
-  const rows = [1, 2, 3, 4].map((diff) => {
-    const cat = sorted.find((c) => c.difficulty === diff)
-    return { difficulty: diff, name: cat?.name || null }
-  })
-
-  return (
-    <div className="flex flex-col gap-px">
-      {rows.map((row) => {
-        const colors = DIFFICULTY_COLORS[row.difficulty]
-        return (
-          <span
-            key={row.difficulty}
-            className={`${colors.bg} ${colors.text} text-[8px] font-semibold px-1 py-px truncate block`}
-          >
-            {row.name || "—"}
-          </span>
-        )
-      })}
-    </div>
-  )
-}

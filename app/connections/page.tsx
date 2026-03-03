@@ -31,7 +31,12 @@ export default function ConnectionsPage() {
       const res = await fetch(url)
       if (!res.ok) {
         if (res.status === 404) {
-          setError("No puzzle available for this date")
+          const isToday = date === getTodayKey()
+          setError(
+            isToday
+              ? "Connections is currently unavailable. Check back later!"
+              : "No puzzle available for this date"
+          )
         } else {
           setError("Failed to load puzzle")
         }
@@ -70,8 +75,8 @@ export default function ConnectionsPage() {
               </div>
             </div>
           ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">{error}</p>
+            <div className="text-center py-20">
+              <p className="text-lg font-semibold text-foreground mb-1">{error}</p>
             </div>
           ) : puzzle ? (
             <GameBoard

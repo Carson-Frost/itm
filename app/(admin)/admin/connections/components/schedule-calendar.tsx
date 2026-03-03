@@ -9,24 +9,37 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
+import { Badge } from "@/components/ui/badge"
+import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, X as XIcon } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
-import { PuzzleCategoryStack, MiniCategoryPills } from "./puzzle-category-stack"
+import { DIFFICULTY_COLORS } from "@/lib/types/connections"
+import { PuzzleCategoryStack } from "./puzzle-category-stack"
 
 interface ScheduleCalendarProps {
   calendar: Record<string, string>
   puzzles: ConnectionsPuzzle[]
   onAssign: (date: string, puzzleId: string | null) => void
+  onRequestChange: (date: string) => void
 }
 
 function formatDateKey(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
 
+function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
+  return createdBy.username || createdBy.email.split("@")[0]
+}
+
 export function ScheduleCalendar({
   calendar,
   puzzles,
   onAssign,
+  onRequestChange,
 }: ScheduleCalendarProps) {
   const today = new Date()
   const [viewYear, setViewYear] = useState(today.getFullYear())
@@ -68,8 +81,14 @@ export function ScheduleCalendar({
   }
 
   const todayKey = formatDateKey(today.getFullYear(), today.getMonth(), today.getDate())
-
   const isPastDate = (dateKey: string) => dateKey < todayKey
+  const isDialogOpen = !!selectedDate
+
+  // Dialog data
+  const selectedPuzzle = selectedDate && calendar[selectedDate]
+    ? puzzleMap.get(calendar[selectedDate]) ?? null
+    : null
+  const selectedIsPast = selectedDate ? isPastDate(selectedDate) : false
 
   return (
     <div>
@@ -109,12 +128,12 @@ export function ScheduleCalendar({
           const puzzle = puzzleId ? puzzleMap.get(puzzleId) : null
           const isToday = dateKey === todayKey
 
-          return (
+          const dayCell = (
             <button
               key={day}
               onClick={() => setSelectedDate(dateKey)}
               className={`
-                bg-background h-24 p-1.5 text-left flex flex-col cursor-pointer
+                bg-background h-24 p-1.5 text-left flex flex-col cursor-pointer w-full
                 transition-colors hover:ring-1 hover:ring-primary hover:ring-inset
                 ${isToday ? "ring-2 ring-primary ring-inset" : ""}
               `}
@@ -127,18 +146,85 @@ export function ScheduleCalendar({
                 {day}
               </span>
               {puzzle && (
-                <div className="mt-1 w-full px-0.5">
-                  <MiniCategoryPills puzzle={puzzle} />
+                <div className="mt-1 w-full min-w-0">
+                  <p className="text-[11px] font-medium leading-tight truncate">
+                    {puzzle.title || <span className="italic text-muted-foreground">Untitled</span>}
+                  </p>
+                  {puzzle.createdBy?.email && (
+                    <p className="text-[9px] text-muted-foreground leading-tight truncate mt-px">
+                      {getAuthorDisplay(puzzle.createdBy)}
+                    </p>
+                  )}
                 </div>
               )}
             </button>
           )
+
+          // Don't render hover cards when dialog is open
+          if (!puzzle || isDialogOpen) return dayCell
+
+          const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
+          const dateLabel = new Date(dateKey + "T12:00:00").toLocaleDateString("default", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          })
+
+          return (
+            <HoverCard key={day} openDelay={300} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                {dayCell}
+              </HoverCardTrigger>
+              <HoverCardContent
+                side="right"
+                align="start"
+                sideOffset={8}
+                className="w-72 p-0 border-3 border-border"
+              >
+                {/* Header */}
+                <div className="px-3 pt-3 pb-2">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <p className="text-sm font-semibold leading-tight truncate">
+                      {puzzle.title || <span className="italic text-muted-foreground">Untitled</span>}
+                    </p>
+                    <Badge variant="outline" className="text-[10px] shrink-0 ml-2">
+                      {isToday ? "Today" : dateLabel}
+                    </Badge>
+                  </div>
+                  {puzzle.createdBy?.email && (
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {getAuthorDisplay(puzzle.createdBy)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Categories with players */}
+                <div className="flex flex-col">
+                  {sorted.map((cat) => {
+                    const colors = DIFFICULTY_COLORS[cat.difficulty]
+                    return (
+                      <div key={cat.difficulty} className="border-t border-border">
+                        <div className={`${colors.bg} ${colors.text} px-3 py-1`}>
+                          <p className="text-[11px] font-bold">{cat.name || "—"}</p>
+                        </div>
+                        <div className="px-3 py-1.5">
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {cat.players?.map((p) => p.name).join(", ") || "No players"}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </HoverCardContent>
+            </HoverCard>
+          )
         })}
       </div>
 
-      {/* Assign dialog */}
+      {/* Day management dialog */}
       <Dialog
-        open={!!selectedDate}
+        open={isDialogOpen}
         onOpenChange={(open) => !open && setSelectedDate(null)}
       >
         <DialogContent className="max-w-sm">
@@ -158,63 +244,79 @@ export function ScheduleCalendar({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
-            {selectedDate && calendar[selectedDate] && (
-              <Link href={`/admin/connections/${calendar[selectedDate]}`}>
-                <Button variant="outline" className="justify-start w-full">
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open in Editor
-                </Button>
-              </Link>
+          <div className="flex flex-col gap-4">
+            {/* Puzzle info block */}
+            {selectedPuzzle ? (
+              <div className="border-3 border-border p-3">
+                <PuzzleCategoryStack puzzle={selectedPuzzle} />
+              </div>
+            ) : (
+              <div className="border-3 border-dashed border-border p-4 text-center">
+                <p className="text-sm text-muted-foreground">No puzzle scheduled</p>
+              </div>
             )}
 
-            {selectedDate && calendar[selectedDate] && !isPastDate(selectedDate) && (
-              <Button
-                variant="outline"
-                className="justify-start text-destructive hover:text-destructive"
-                onClick={() => {
-                  onAssign(selectedDate, null)
-                  setSelectedDate(null)
-                }}
-              >
-                Clear Assignment
-              </Button>
-            )}
-
-            {selectedDate && isPastDate(selectedDate) && (
-              <p className="text-xs text-muted-foreground py-2">
-                Past dates cannot be modified.
-              </p>
-            )}
-
-            {selectedDate && !isPastDate(selectedDate) && (
+            {/* Actions */}
+            {selectedIsPast ? (
               <>
-                {puzzles.map((puzzle) => {
-                  const isAssigned = calendar[selectedDate] === puzzle.id
-                  return (
-                    <button
-                      key={puzzle.id}
-                      className={`border-3 p-3 text-left transition-colors hover:bg-muted/20 ${
-                        isAssigned
-                          ? "border-primary bg-primary/5"
-                          : "border-border"
-                      }`}
+                <p className="text-xs text-muted-foreground">Past dates cannot be modified.</p>
+                {selectedPuzzle && (
+                  <Link href={`/admin/connections/${selectedPuzzle.id}`}>
+                    <Button variant="outline" className="w-full justify-start">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View Puzzle
+                    </Button>
+                  </Link>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {selectedPuzzle ? (
+                  <>
+                    <Link href={`/admin/connections/${selectedPuzzle.id}`}>
+                      <Button variant="outline" className="w-full justify-start">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Edit Puzzle
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="outline"
+                      className="justify-start"
                       onClick={() => {
-                        onAssign(selectedDate, puzzle.id)
+                        if (!selectedDate) return
+                        setSelectedDate(null)
+                        onRequestChange(selectedDate)
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Change Puzzle
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="justify-start text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (!selectedDate) return
+                        onAssign(selectedDate, null)
                         setSelectedDate(null)
                       }}
                     >
-                      <PuzzleCategoryStack puzzle={puzzle} />
-                    </button>
-                  )
-                })}
-
-                {puzzles.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No published puzzles available
-                  </p>
+                      <XIcon className="h-4 w-4 mr-2" />
+                      Remove Puzzle
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    className="btn-chamfer"
+                    onClick={() => {
+                      if (!selectedDate) return
+                      setSelectedDate(null)
+                      onRequestChange(selectedDate)
+                    }}
+                  >
+                    Assign Puzzle
+                  </Button>
                 )}
-              </>
+              </div>
             )}
           </div>
         </DialogContent>

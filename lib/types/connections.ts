@@ -32,7 +32,6 @@ export interface ConnectionsScheduleConfig {
   calendar: Record<string, string> // 'YYYY-MM-DD' -> puzzleId
   stack: string[] // puzzleId[]
   stackPointer: number
-  fallbackPuzzleId: string | null
 }
 
 export interface ConnectionsResult {
