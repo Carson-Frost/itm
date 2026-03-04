@@ -47,11 +47,12 @@ interface GameBoardProps {
   puzzle: ConnectionsPuzzle
   currentDate: string
   onSelectDate: (date: string) => void
+  testMode?: boolean
 }
 
-export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps) {
+export function GameBoard({ puzzle, currentDate, onSelectDate, testMode = false }: GameBoardProps) {
   const { user } = useAuth()
-  const storageKey = `${STORAGE_KEY_PREFIX}${puzzle.id}`
+  const storageKey = testMode ? null : `${STORAGE_KEY_PREFIX}${puzzle.id}`
 
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isStatsOpen, setIsStatsOpen] = useState(false)
@@ -68,8 +69,9 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     )
   }, [puzzle])
 
-  // Load saved state, checking resetVersion
+  // Load saved state, checking resetVersion (skip in test mode)
   const loadState = useCallback((): GameState | null => {
+    if (!storageKey) return null
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
@@ -128,8 +130,9 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
   const completedThisSession = useRef(false)
   const hasSavedResult = useRef(false)
 
-  // Persist state with resetVersion
+  // Persist state with resetVersion (skip in test mode)
   useEffect(() => {
+    if (!storageKey) return
     const stateToSave = {
       ...gameState,
       resetVersion: puzzle.resetVersion ?? 0,
@@ -137,8 +140,9 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     localStorage.setItem(storageKey, JSON.stringify(stateToSave))
   }, [gameState, storageKey, puzzle.resetVersion])
 
-  // Save result to Firestore — only when completed during this session, and only once
+  // Save result to Firestore — only when completed during this session, and only once (skip in test mode)
   useEffect(() => {
+    if (testMode) return
     if (!gameState.isComplete || !user || !completedThisSession.current || hasSavedResult.current) return
     hasSavedResult.current = true
 
@@ -165,7 +169,7 @@ export function GameBoard({ puzzle, currentDate, onSelectDate }: GameBoardProps)
     }
 
     saveResult()
-  }, [gameState.isComplete, gameState.solved, gameState.mistakes, gameState.solvedCategories, puzzle.id, puzzle.date, user])
+  }, [testMode, gameState.isComplete, gameState.solved, gameState.mistakes, gameState.solvedCategories, puzzle.id, puzzle.date, user])
 
   const solvedCategories = useMemo(() => {
     return puzzle.categories

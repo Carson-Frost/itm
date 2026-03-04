@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Badge } from "@/components/ui/badge"
+import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
+import { ScheduledBadge, BacklogBadge, ActiveBadge } from "@/components/ui/status-badge"
 
 type SourceType = "calendar" | "backlog" | null
 
@@ -43,9 +44,9 @@ function Countdown() {
   return timeLeft
 }
 
-const SOURCE_CONFIG: Record<string, { label: string; className: string }> = {
-  calendar: { label: "Scheduled", className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30" },
-  backlog: { label: "Backlog", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" },
+const SOURCE_CONFIG: Record<string, { label: string; badge: React.ReactNode }> = {
+  calendar: { label: "Scheduled", badge: <ScheduledBadge>Scheduled</ScheduledBadge> },
+  backlog: { label: "Backlog", badge: <BacklogBadge>Backlog</BacklogBadge> },
 }
 
 function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
@@ -107,11 +108,7 @@ function PuzzlePanel({
         <p className="text-sm font-medium leading-tight truncate">
           {puzzle.title || <span className="italic text-muted-foreground">Untitled</span>}
         </p>
-        {source && (
-          <Badge variant="outline" className={`text-[10px] shrink-0 ${SOURCE_CONFIG[source].className}`}>
-            {SOURCE_CONFIG[source].label}
-          </Badge>
-        )}
+        {source && <div className="shrink-0">{SOURCE_CONFIG[source].badge}</div>}
       </div>
 
       {/* Author */}

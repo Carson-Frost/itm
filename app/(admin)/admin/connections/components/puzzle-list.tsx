@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -17,9 +16,10 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
-import { Search, X, ChevronUp, ChevronDown, Pencil } from "lucide-react"
+import { Search, X, ChevronUp, ChevronDown, Pencil, Play } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
+import { DraftBadge, ReadyBadge, ActiveBadge, ScheduledBadge, ArchivedBadge } from "@/components/ui/status-badge"
 
 interface StatsData {
   totalPlays: number
@@ -27,7 +27,7 @@ interface StatsData {
   avgMistakes: number
 }
 
-type DisplayStatus = "Draft" | "Published" | "Active" | "Played"
+type DisplayStatus = "Draft" | "Ready" | "Active" | "Archived"
 
 interface PuzzleListProps {
   puzzles: ConnectionsPuzzle[]
@@ -110,21 +110,21 @@ function InlineStats({ puzzleId }: { puzzleId: string }) {
   )
 }
 
-function getStatusBadgeClasses(status: DisplayStatus): string {
-  switch (status) {
-    case "Active":
-      return "bg-primary/10 text-primary border-primary/30"
-    case "Played":
-      return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
-    case "Published":
-      return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30"
-    case "Draft":
-      return "bg-muted text-muted-foreground border-border"
-  }
-}
-
 function getAuthorDisplay(createdBy: { email: string; username?: string }): string {
   return createdBy.username || createdBy.email.split("@")[0]
+}
+
+function getStatusBadge(displayStatus: DisplayStatus): React.ReactNode {
+  switch (displayStatus) {
+    case "Active":
+      return <ActiveBadge>Active</ActiveBadge>
+    case "Archived":
+      return <ArchivedBadge>Archived</ArchivedBadge>
+    case "Ready":
+      return <ReadyBadge>Ready</ReadyBadge>
+    case "Draft":
+      return <DraftBadge>Draft</DraftBadge>
+  }
 }
 
 function getOrdinal(n: number): string {
@@ -197,8 +197,8 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
   function getDisplayStatus(puzzle: ConnectionsPuzzle): DisplayStatus {
     if (puzzle.status === "draft") return "Draft"
     if (puzzle.id === activePuzzleId) return "Active"
-    if (pastCalendarPuzzleIds.has(puzzle.id)) return "Played"
-    return "Published"
+    if (pastCalendarPuzzleIds.has(puzzle.id)) return "Archived"
+    return "Ready"
   }
 
   const filteredPuzzles = useMemo(() => {
@@ -206,11 +206,11 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
 
     if (statusFilter === "draft") {
       result = result.filter((p) => p.status === "draft")
-    } else if (statusFilter === "published") {
+    } else if (statusFilter === "ready") {
       result = result.filter((p) => p.status === "published" && p.id !== activePuzzleId && !pastCalendarPuzzleIds.has(p.id))
     } else if (statusFilter === "active") {
       result = result.filter((p) => p.id === activePuzzleId)
-    } else if (statusFilter === "played") {
+    } else if (statusFilter === "archived") {
       result = result.filter((p) => p.status === "published" && pastCalendarPuzzleIds.has(p.id) && p.id !== activePuzzleId)
     }
 
@@ -245,9 +245,9 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="published">Published</SelectItem>
+              <SelectItem value="ready">Ready</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="played">Played</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -299,8 +299,8 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
           filteredPuzzles.map((puzzle) => {
             const displayStatus = getDisplayStatus(puzzle)
             const isExpanded = expandedId === puzzle.id
-            const hasStats = displayStatus === "Active" || displayStatus === "Played"
-            const isEditable = displayStatus === "Draft" || displayStatus === "Published"
+            const hasStats = displayStatus === "Active" || displayStatus === "Archived"
+            const isEditable = displayStatus === "Draft" || displayStatus === "Ready"
             const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
             const scheduled = scheduledMap.get(puzzle.id)
 
@@ -325,13 +325,27 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
                           )}
                         </Link>
                       )}
-                      {!isSelectMode && isEditable && (
-                        <Link
-                          href={`/admin/connections/${puzzle.id}`}
-                          className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-foreground transition-all shrink-0"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Link>
+                      {!isSelectMode && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              window.open(`/admin/connections/test?puzzleId=${puzzle.id}`, "_blank", "noopener,noreferrer")
+                            }}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            title="Test puzzle"
+                          >
+                            <Play className="h-3 w-3" />
+                          </button>
+                          {isEditable && (
+                            <Link
+                              href={`/admin/connections/${puzzle.id}`}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Link>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -340,12 +354,7 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
                           ? getAuthorDisplay(puzzle.createdBy)
                           : "—"}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] leading-none py-0 px-1.5 ${getStatusBadgeClasses(displayStatus)}`}
-                      >
-                        {displayStatus}
-                      </Badge>
+                      {getStatusBadge(displayStatus)}
                     </div>
                   </div>
 
@@ -408,12 +417,7 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
                         {getAuthorDisplay(puzzle.createdBy)}
                       </span>
                     )}
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] leading-none py-0 px-1.5 ${getStatusBadgeClasses(displayStatus)}`}
-                    >
-                      {displayStatus}
-                    </Badge>
+                    {getStatusBadge(displayStatus)}
                   </div>
                 </div>
                 {sorted.length > 0 && (

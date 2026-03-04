@@ -12,6 +12,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -30,7 +36,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Loader2, Save, Send, Trash2, CalendarDays, Layers, Check } from "lucide-react"
+import { Loader2, Save, Send, Trash2, CalendarDays, Layers, Check, Play } from "lucide-react"
 import { toast } from "sonner"
 import type { ConnectionsCategory, ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
@@ -60,6 +66,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [isPublishOpen, setIsPublishOpen] = useState(false)
   const [publishScheduleDate, setPublishScheduleDate] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"categories" | "board">("categories")
 
   const isExisting = !!puzzle
   const isDraft = !puzzle || puzzle.status === "draft"
@@ -288,6 +295,30 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               </span>
             )}
 
+            {/* Test button - only for existing puzzles */}
+            {isExisting && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const puzzleId = puzzle?.id
+                        if (puzzleId) {
+                          window.open(`/admin/connections/test?puzzleId=${puzzleId}`, "_blank", "noopener,noreferrer")
+                        }
+                      }}
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      Test
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">Open puzzle in test mode</TooltipContent>
+              </Tooltip>
+            )}
+
             {/* New puzzle: Discard + Save Draft + Publish */}
             {!isExisting && (
               <>
@@ -453,24 +484,36 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
 
       <Separator />
 
-      {/* Side-by-side: Categories (left) + Board (right) */}
+      {/* Categories (left) + Board (right) - tabs on small, side-by-side on large */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6">
         {/* Categories */}
-        <div className="flex flex-col gap-4">
-          {categories.map((cat, i) => (
-            <CategoryBuilder
-              key={i}
-              category={cat}
-              onChange={(updated) => handleCategoryChangeWithAutoPlace(i, updated)}
-              existingPlayerIds={existingPlayerIds}
-              missingName={categoryErrors[i].missingName}
-              missingPlayers={categoryErrors[i].missingPlayers}
-            />
-          ))}
+        <div>
+          {/* Mobile tabs */}
+          <div className="lg:hidden mb-4">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "categories" | "board")}>
+              <TabsList className="w-full">
+                <TabsTrigger value="categories" className="flex-1">Categories</TabsTrigger>
+                <TabsTrigger value="board" className="flex-1">Starting Board</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div className={`flex flex-col gap-4 ${activeTab === "board" ? "hidden lg:flex" : ""}`}>
+            {categories.map((cat, i) => (
+              <CategoryBuilder
+                key={i}
+                category={cat}
+                onChange={(updated) => handleCategoryChangeWithAutoPlace(i, updated)}
+                existingPlayerIds={existingPlayerIds}
+                missingName={categoryErrors[i].missingName}
+                missingPlayers={categoryErrors[i].missingPlayers}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Board */}
-        <div className="border-3 border-border p-4">
+        <div className={`border-3 border-border p-4 ${activeTab === "categories" ? "hidden lg:block" : ""}`}>
           <p className="text-xs font-semibold text-muted-foreground mb-3">STARTING BOARD</p>
           <BoardLayout
             categories={categories}

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Image from "next/image"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { X, Plus } from "lucide-react"
@@ -113,22 +112,20 @@ export function CategoryBuilder({
             {category.players.map((player, i) => (
               <div
                 key={player.playerId}
-                className="relative h-16 sm:h-20 border-3 border-border bg-muted/30 group overflow-hidden"
+                className="aspect-square relative border-2 border-border bg-muted/30 group overflow-hidden"
               >
                 {player.headshotUrl ? (
-                  <Image
+                  <img
                     src={player.headshotUrl}
                     alt=""
-                    fill
-                    className="object-cover object-top"
-                    sizes="80px"
+                    className="w-full h-full object-cover object-top"
                   />
                 ) : (
                   <div className="w-full h-full bg-muted/50" />
                 )}
 
                 {/* Name overlay */}
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-4 pb-1 px-1">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-5 pb-1 px-1">
                   <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wide text-white text-center leading-tight line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                     {player.name}
                   </p>
@@ -148,7 +145,7 @@ export function CategoryBuilder({
             {category.players.length < 4 && (
               <button
                 onClick={() => setIsPlayerSearchOpen(true)}
-                className="h-16 sm:h-20 flex flex-col items-center justify-center gap-1 border-3 border-dashed border-muted-foreground/30
+                className="aspect-square flex flex-col items-center justify-center gap-1 border-2 border-dashed border-muted-foreground/30
                   text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors cursor-pointer"
               >
                 <Plus className="h-4 w-4" />

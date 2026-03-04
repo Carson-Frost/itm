@@ -66,6 +66,7 @@ export async function PUT(req: NextRequest) {
       resource: "connections_schedule/config",
       before: existing.exists ? existing.data() : null,
       after: data,
+      severity: "low",
     })
 
     return NextResponse.json({ success: true })

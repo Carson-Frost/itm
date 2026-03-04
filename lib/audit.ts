@@ -17,8 +17,20 @@ interface AuditParams {
 // Map action prefixes to severity levels
 function inferSeverity(action: string): AuditSeverity {
   const upper = action.toUpperCase()
-  if (upper.startsWith("DELETE") || upper.startsWith("DISABLE")) return "high"
-  if (upper.startsWith("UPDATE") || upper.startsWith("EDIT") || upper.startsWith("ENABLE") || upper.startsWith("REVERT")) return "medium"
+
+  // High severity: user management (critical), resets (data loss)
+  if (upper === "DISABLE_USER" || upper === "ENABLE_USER") return "high"
+
+  // Low severity: schedule updates are routine
+  if (upper === "UPDATE_SCHEDULE") return "low"
+
+  // Medium: updates and edits
+  if (upper.startsWith("UPDATE") || upper.startsWith("EDIT") || upper.startsWith("REVERT")) return "medium"
+
+  // Medium: deletes are not critical for puzzle/content (can be reverted or recreated)
+  if (upper.startsWith("DELETE")) return "medium"
+
+  // Default: low
   return "low"
 }
 

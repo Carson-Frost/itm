@@ -116,10 +116,13 @@ export async function PUT(
 
     const authorInfo = { uid: admin.uid, email: admin.email, ...(adminUsername ? { username: adminUsername } : {}) }
 
+    const newStatus = status === "published" ? "published" : "draft"
+    const oldStatus = existing.data()?.status as string | undefined
+
     const updateData: Record<string, unknown> = {
       title: title || "",
       categories,
-      status: status === "published" ? "published" : "draft",
+      status: newStatus,
       updatedBy: authorInfo,
       updatedAt: FieldValue.serverTimestamp(),
     }
@@ -130,6 +133,9 @@ export async function PUT(
 
     await docRef.update(updateData)
 
+    // High severity if status is changing (affects active days)
+    const isStatusChange = oldStatus && oldStatus !== newStatus
+
     await logAudit({
       adminUid: admin.uid,
       adminEmail: admin.email,
@@ -137,6 +143,7 @@ export async function PUT(
       resource: `connections_puzzles/${id}`,
       before: existing.data(),
       after: updateData,
+      severity: isStatusChange ? "high" : "medium",
     })
 
     return NextResponse.json({ success: true })
@@ -178,6 +185,7 @@ export async function DELETE(
       action: "DELETE_PUZZLE",
       resource: `connections_puzzles/${id}`,
       before: existing.data(),
+      severity: "medium",
     })
 
     return NextResponse.json({ success: true })
