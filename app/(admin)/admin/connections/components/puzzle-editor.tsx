@@ -40,6 +40,31 @@ import { Loader2, Save, Send, Trash2, CalendarDays, Layers, Check, Play } from "
 import { toast } from "sonner"
 import type { ConnectionsCategory, ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
+import { StatusBadge, type PuzzleStatus } from "@/components/ui/status-badge"
+
+type DisplayStatus = "Draft" | "Scheduled" | "On Deck" | "Ready" | "Active" | "Archived"
+
+function getTodayKey(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+}
+
+function getStatusBadge(displayStatus: DisplayStatus): React.ReactNode {
+  const statusMap: Record<DisplayStatus, PuzzleStatus> = {
+    Draft: "draft",
+    Scheduled: "scheduled",
+    "On Deck": "ondeck",
+    Ready: "ready",
+    Active: "active",
+    Archived: "archived",
+  }
+  return <StatusBadge status={statusMap[displayStatus]} />
+}
+
+function getAuthorDisplay(createdBy: { email: string; username?: string } | undefined): string {
+  if (!createdBy) return "—"
+  return createdBy.username || createdBy.email.split("@")[0]
+}
 
 function emptyCategory(difficulty: 1 | 2 | 3 | 4): ConnectionsCategory {
   return { name: "", difficulty, players: [] }
@@ -70,6 +95,28 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
 
   const isExisting = !!puzzle
   const isDraft = !puzzle || puzzle.status === "draft"
+
+  // Calculate display status based on calendar context
+  const displayStatus: DisplayStatus = useMemo(() => {
+    if (!puzzle) return "Draft"
+    if (puzzle.status === "draft") return "Draft"
+
+    const todayKey = getTodayKey()
+    const activePuzzleId = calendar?.[todayKey]
+
+    if (puzzle.id === activePuzzleId) return "Active"
+
+    // Check if puzzle is in past calendar (archived)
+    if (calendar) {
+      for (const [date, puzzleId] of Object.entries(calendar)) {
+        if (date < todayKey && puzzleId === puzzle.id) {
+          return "Archived"
+        }
+      }
+    }
+
+    return "Ready"
+  }, [puzzle, calendar])
 
   const existingPlayerIds = useMemo(() => {
     const ids = new Set<string>()
@@ -273,7 +320,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
     <div className="flex flex-col gap-6">
       {/* Title row with actions */}
       <div className="flex items-end justify-between gap-4">
-        <div className="flex-1 max-w-md">
+        <div className="flex-1">
           <div className="flex items-center mb-1">
             <label className="text-xs font-semibold text-muted-foreground">TITLE</label>
             {isTitleMissing && <span className="text-xs text-destructive ml-1.5">Required</span>}
@@ -284,17 +331,19 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
             autoComplete="off"
             maxLength={30}
           />
+          {/* Author + badge under title */}
+          {isExisting && puzzle && (
+            <div className="flex items-center gap-2 mt-1.5 text-xs">
+              <span className="text-muted-foreground">
+                {getAuthorDisplay(puzzle.createdBy)}
+              </span>
+              {getStatusBadge(displayStatus)}
+            </div>
+          )}
         </div>
 
         <TooltipProvider delayDuration={200}>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Status indicator for existing puzzles */}
-            {isExisting && (
-              <span className={`text-xs font-semibold mr-1 ${isDraft ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}>
-                {isDraft ? "Draft" : "Published"}
-              </span>
-            )}
-
             {/* Test button - only for existing puzzles */}
             {isExisting && (
               <Tooltip>
@@ -372,17 +421,11 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               </>
             )}
 
-            {/* Editing draft: Delete + Save Changes + Publish */}
-            {isExisting && isDraft && (
+            {/* Editing draft: Discard Changes + Save Draft + Publish + Delete (icon-only) */}
+            {displayStatus === "Draft" && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setIsDeleteOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Delete
+                <Button variant="outline" size="sm" onClick={handleDiscard}>
+                  Discard Changes
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -398,7 +441,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
                         ) : (
                           <Save className="h-4 w-4 mr-1" />
                         )}
-                        Save Changes
+                        Save Draft
                       </Button>
                     </span>
                   </TooltipTrigger>
@@ -428,20 +471,27 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
                     </TooltipContent>
                   )}
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setIsDeleteOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Delete puzzle</TooltipContent>
+                </Tooltip>
               </>
             )}
 
-            {/* Editing published: Delete + Save Changes */}
-            {isExisting && !isDraft && (
+            {/* Editing published (Scheduled/Ready/Active/Archived): Discard Changes + Save Changes + Delete (icon-only) */}
+            {(displayStatus === "Scheduled" || displayStatus === "Ready" || displayStatus === "Active" || displayStatus === "Archived") && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setIsDeleteOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Delete
+                <Button variant="outline" size="sm" onClick={handleDiscard}>
+                  Discard Changes
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -466,6 +516,19 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
                       {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
                     </TooltipContent>
                   )}
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setIsDeleteOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Delete puzzle</TooltipContent>
                 </Tooltip>
               </>
             )}

@@ -12,7 +12,7 @@ const scoringLabels: Record<ScoringFormat, string> = {
 
 const scoringStyles: Record<ScoringFormat, string> = {
   STD: "bg-muted text-muted-foreground border border-blue-500/40",
-  Half: "bg-blue-500/20 text-blue-600 dark:text-blue-400",
+  Half: "bg-muted text-blue-600 dark:text-blue-400 border border-blue-500/40",
   PPR: "bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/40",
 }
 
@@ -39,7 +39,7 @@ const qbLabels: Record<QBFormat, string> = {
 
 const qbStyles: Record<QBFormat, string> = {
   "1qb": "bg-muted text-muted-foreground border border-purple-500/40",
-  superflex: "bg-purple-500/20 text-purple-600 dark:text-purple-400",
+  superflex: "bg-muted text-purple-600 dark:text-purple-400 border border-purple-500/40",
   "2qb": "bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/40",
 }
 
@@ -65,8 +65,8 @@ const tepLabels: Record<number, string> = {
 
 const tepStyles: Record<number, string> = {
   0: "bg-muted text-muted-foreground border border-amber-500/40",
-  0.5: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
-  1: "bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40",
+  0.5: "bg-muted text-yellow-600 border border-amber-500/40",
+  1: "bg-amber-500/20 text-yellow-600 border border-amber-500/40",
 }
 
 export function TEPremiumBadge({ tePremium, className }: { tePremium: number; className?: string }) {

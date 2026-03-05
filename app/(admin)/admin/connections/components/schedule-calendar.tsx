@@ -104,11 +104,11 @@ export function ScheduleCalendar({
       </div>
 
       {/* Day headers */}
-      <div className="grid grid-cols-7 gap-px mb-px">
+      <div className="grid grid-cols-7 gap-px border-3 border-border/50">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div
             key={d}
-            className="text-xs font-semibold text-muted-foreground text-center py-2"
+            className="bg-background text-xs font-semibold text-muted-foreground text-center py-2"
           >
             {d}
           </div>
@@ -220,6 +220,15 @@ export function ScheduleCalendar({
             </HoverCard>
           )
         })}
+
+        {/* Empty cells to complete the last row */}
+        {(() => {
+          const totalCells = firstDay + daysInMonth
+          const remainingCells = (7 - (totalCells % 7)) % 7
+          return Array.from({ length: remainingCells }).map((_, i) => (
+            <div key={`after-${i}`} className="bg-background h-24" />
+          ))
+        })()}
       </div>
 
       {/* Day management dialog */}

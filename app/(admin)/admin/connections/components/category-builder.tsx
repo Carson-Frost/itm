@@ -100,13 +100,12 @@ export function CategoryBuilder({
           </div>
         </div>
 
-        {/* Player slots — match game tile appearance */}
+        {/* Player slots — match game tile appearance with ghost slots for empties */}
         <div>
           <div className="flex items-center mb-2">
             <label className="text-xs font-semibold text-muted-foreground">
               PLAYERS ({category.players.length}/4)
             </label>
-            {missingPlayers > 0 && <span className="text-xs text-destructive ml-1.5">Need {missingPlayers} more</span>}
           </div>
           <div className="grid grid-cols-4 gap-1">
             {category.players.map((player, i) => (
@@ -142,16 +141,21 @@ export function CategoryBuilder({
               </div>
             ))}
 
-            {category.players.length < 4 && (
+            {/* Ghost slots for missing players */}
+            {Array.from({ length: 4 - category.players.length }).map((_, ghostIndex) => (
               <button
+                key={`ghost-${ghostIndex}`}
                 onClick={() => setIsPlayerSearchOpen(true)}
-                className="aspect-square flex flex-col items-center justify-center gap-1 border-2 border-dashed border-muted-foreground/30
-                  text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors cursor-pointer"
+                className="aspect-square flex flex-col items-center justify-center gap-1
+                  border-2 border-dashed border-muted-foreground/25
+                  text-muted-foreground/40 hover:text-foreground hover:border-primary/40 hover:bg-primary/5
+                  transition-all cursor-pointer group"
               >
-                <Plus className="h-4 w-4" />
-                <span className="text-[9px] font-semibold uppercase">Add</span>
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted/20 group-hover:bg-primary/10 transition-colors">
+                  <Plus className="h-4 w-4" />
+                </div>
               </button>
-            )}
+            ))}
           </div>
         </div>
 

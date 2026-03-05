@@ -19,7 +19,7 @@ import {
 import { Search, X, ChevronUp, ChevronDown, Pencil, Play } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
-import { DraftBadge, ReadyBadge, ActiveBadge, ScheduledBadge, ArchivedBadge } from "@/components/ui/status-badge"
+import { StatusBadge, type PuzzleStatus } from "@/components/ui/status-badge"
 
 interface StatsData {
   totalPlays: number
@@ -27,7 +27,7 @@ interface StatsData {
   avgMistakes: number
 }
 
-type DisplayStatus = "Draft" | "Ready" | "Active" | "Archived"
+type DisplayStatus = "Draft" | "Scheduled" | "On Deck" | "Ready" | "Active" | "Archived"
 
 interface PuzzleListProps {
   puzzles: ConnectionsPuzzle[]
@@ -115,16 +115,27 @@ function getAuthorDisplay(createdBy: { email: string; username?: string }): stri
 }
 
 function getStatusBadge(displayStatus: DisplayStatus): React.ReactNode {
-  switch (displayStatus) {
-    case "Active":
-      return <ActiveBadge>Active</ActiveBadge>
-    case "Archived":
-      return <ArchivedBadge>Archived</ArchivedBadge>
-    case "Ready":
-      return <ReadyBadge>Ready</ReadyBadge>
-    case "Draft":
-      return <DraftBadge>Draft</DraftBadge>
+  const statusMap: Record<DisplayStatus, PuzzleStatus> = {
+    Draft: "draft",
+    Scheduled: "scheduled",
+    "On Deck": "ondeck",
+    Ready: "ready",
+    Active: "active",
+    Archived: "archived",
   }
+  return <StatusBadge status={statusMap[displayStatus]} />
+}
+
+function getStatusBadgeForFilter(filterValue: string): React.ReactNode {
+  const filterToStatus: Record<string, PuzzleStatus> = {
+    draft: "draft",
+    scheduled: "scheduled",
+    ondeck: "ondeck",
+    ready: "ready",
+    active: "active",
+    archived: "archived",
+  }
+  return filterToStatus[filterValue] ? <StatusBadge status={filterToStatus[filterValue]} /> : null
 }
 
 function getOrdinal(n: number): string {
@@ -198,6 +209,15 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
     if (puzzle.status === "draft") return "Draft"
     if (puzzle.id === activePuzzleId) return "Active"
     if (pastCalendarPuzzleIds.has(puzzle.id)) return "Archived"
+    // Check if puzzle is in calendar (future) or stack (backlog)
+    if (scheduledMap.has(puzzle.id)) {
+      // If scheduled date looks like a date (not a position), it's from calendar
+      const scheduled = scheduledMap.get(puzzle.id)
+      if (scheduled && !scheduled.includes(" in Backlog")) {
+        return "Scheduled"
+      }
+      return "On Deck"
+    }
     return "Ready"
   }
 
@@ -207,7 +227,19 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
     if (statusFilter === "draft") {
       result = result.filter((p) => p.status === "draft")
     } else if (statusFilter === "ready") {
-      result = result.filter((p) => p.status === "published" && p.id !== activePuzzleId && !pastCalendarPuzzleIds.has(p.id))
+      result = result.filter((p) => p.status === "published" && p.id !== activePuzzleId && !pastCalendarPuzzleIds.has(p.id) && !scheduledMap.has(p.id))
+    } else if (statusFilter === "scheduled") {
+      result = result.filter((p) => p.status === "published" && p.id !== activePuzzleId && !pastCalendarPuzzleIds.has(p.id) && scheduledMap.has(p.id))
+    } else if (statusFilter === "ondeck") {
+      // On Deck = in stack but not in calendar
+      result = result.filter((p) => {
+        if (p.status !== "published") return false
+        if (p.id === activePuzzleId) return false
+        if (pastCalendarPuzzleIds.has(p.id)) return false
+        const scheduled = scheduledMap.get(p.id)
+        // Must have a scheduled entry that contains " in Backlog"
+        return scheduled !== undefined && scheduled.includes(" in Backlog")
+      })
     } else if (statusFilter === "active") {
       result = result.filter((p) => p.id === activePuzzleId)
     } else if (statusFilter === "archived") {
@@ -240,14 +272,22 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
           <label className="text-[10px] font-semibold text-muted-foreground">STATUS</label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-28 h-8 text-xs">
-              <SelectValue />
+              <SelectValue>
+                {statusFilter === "all" ? (
+                  <span className="text-muted-foreground">All</span>
+                ) : (
+                  getStatusBadgeForFilter(statusFilter)
+                )}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="ready">Ready</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
+              <SelectItem value="draft"><StatusBadge status="draft" /></SelectItem>
+              <SelectItem value="scheduled"><StatusBadge status="scheduled" /></SelectItem>
+              <SelectItem value="ondeck"><StatusBadge status="ondeck" /></SelectItem>
+              <SelectItem value="ready"><StatusBadge status="ready" /></SelectItem>
+              <SelectItem value="active"><StatusBadge status="active" /></SelectItem>
+              <SelectItem value="archived"><StatusBadge status="archived" /></SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -300,7 +340,7 @@ export function PuzzleList({ puzzles, calendar, stack, stackPointer, onSelect }:
             const displayStatus = getDisplayStatus(puzzle)
             const isExpanded = expandedId === puzzle.id
             const hasStats = displayStatus === "Active" || displayStatus === "Archived"
-            const isEditable = displayStatus === "Draft" || displayStatus === "Ready"
+            const isEditable = displayStatus === "Draft" || displayStatus === "Ready" || displayStatus === "Scheduled" || displayStatus === "On Deck"
             const sorted = [...(puzzle.categories || [])].sort((a, b) => a.difficulty - b.difficulty)
             const scheduled = scheduledMap.get(puzzle.id)
 

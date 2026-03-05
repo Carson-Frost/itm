@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { AlertTriangle } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
-import { ScheduledBadge, BacklogBadge, ActiveBadge } from "@/components/ui/status-badge"
+import { StatusBadge, type PuzzleStatus } from "@/components/ui/status-badge"
 
 type SourceType = "calendar" | "backlog" | null
 
@@ -45,8 +45,8 @@ function Countdown() {
 }
 
 const SOURCE_CONFIG: Record<string, { label: string; badge: React.ReactNode }> = {
-  calendar: { label: "Scheduled", badge: <ScheduledBadge>Scheduled</ScheduledBadge> },
-  backlog: { label: "Backlog", badge: <BacklogBadge>Backlog</BacklogBadge> },
+  calendar: { label: "Scheduled", badge: <StatusBadge status="scheduled" /> },
+  backlog: { label: "On Deck", badge: <StatusBadge status="ondeck" /> },
 }
 
 function getAuthorDisplay(createdBy: { email: string; username?: string }): string {

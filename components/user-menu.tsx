@@ -2,10 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Moon, Settings, LogOut } from "lucide-react"
+import { Moon, Settings, ExternalLink, LogOut } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useTheme } from "@/lib/theme-context"
 import { useUserData } from "@/hooks/use-user-data"
+import { useIsAdmin } from "@/hooks/use-is-admin"
 import { signOut } from "@/lib/auth-actions"
 import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/user-avatar"
@@ -20,6 +21,7 @@ import { Switch } from "@/components/ui/switch"
 export function UserMenu() {
   const { user, loading } = useAuth()
   const { userData } = useUserData(user?.uid)
+  const { isAdmin } = useIsAdmin(user?.uid)
   const { theme, toggleTheme } = useTheme()
   const pathname = usePathname()
 
@@ -79,6 +81,19 @@ export function UserMenu() {
               </div>
             </div>
           </li>
+          {isAdmin && (
+            <li className="mb-1">
+              <a
+                href="/admin"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-2 py-2 text-sm rounded-sm border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]"
+              >
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                <span>Admin Panel</span>
+              </a>
+            </li>
+          )}
           <li className="mb-1">
             <Link href="/settings" className="flex items-center gap-2 px-2 py-2 text-sm rounded-sm border border-transparent hover:border-ring hover:ring-ring/50 hover:ring-[3px]">
               <Settings className="h-4 w-4" />

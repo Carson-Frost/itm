@@ -399,7 +399,7 @@ export default function TradeCalculator() {
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-muted-foreground">TE PREMIUM</label>
                     <Select value={String(tePremium)} onValueChange={(v) => setTePremium(Number(v))}>
-                      <SelectTrigger className="h-9 text-sm w-[110px]">
+                      <SelectTrigger className="h-9 text-sm w-[115px]">
                         <SelectValue>
                           <TEPremiumBadge tePremium={tePremium} />
                         </SelectValue>
