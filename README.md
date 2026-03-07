@@ -1,54 +1,31 @@
 # ITM Scouting
 
-Fantasy football and NFL scouting analytics platform.
+Fantasy football and NFL scouting analytics platform built with Next.js and Firebase.
 
-## Setup
+<!-- ![Hero](screenshots/hero.png) -->
 
-1. Install dependencies:
-```bash
-npm install
-```
+## Features
 
-2. Create a `.env.local` file in the root directory with your Firebase configuration:
-```bash
-cp .env.local.example .env.local
-```
+### Connections
 
-3. Add your Firebase project credentials to `.env.local`:
-   - Go to [Firebase Console](https://console.firebase.google.com/)
-   - Select your project
-   - Go to Project Settings > General
-   - Scroll down to "Your apps" and select your web app
-   - Copy the config values to your `.env.local` file
+NFL-themed daily puzzle game inspired by the NYT Connections format.
 
-4. Set up Firebase Authentication:
-   - In Firebase Console, go to Authentication > Sign-in method
-   - Enable "Email/Password" provider
-   - Enable "Google" provider
-   - Add your domain to authorized domains
+<!-- ![Connections](screenshots/connections.png) -->
 
-5. Set up Firestore Database:
-   - In Firebase Console, go to Firestore Database
-   - Create database in production mode
-   - Deploy the security rules from `firestore.rules` to protect user data
+### Fantasy Rankings
 
-## Development
+Create and manage custom player rankings with drag-and-drop tier lists.
 
-Run the development server:
-```bash
-npm run dev
-```
+<!-- ![Rankings](screenshots/rankings.png) -->
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+### Player Charts
 
-## Build
+Visualize and compare player stats across the season.
 
-Build for production:
-```bash
-npm run build
-```
+<!-- ![Charts](screenshots/charts.png) -->
 
-Start production server:
-```bash
-npm start
-```
+### Trade Calculator
+
+Evaluate fantasy trade scenarios.
+
+<!-- ![Trade Calculator](screenshots/trade-calculator.png) -->
