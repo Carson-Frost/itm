@@ -15,7 +15,8 @@ type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries'
 type SortDirection = 'asc' | 'desc'
 type ScoringFormat = 'PPR' | 'Half PPR' | 'STD'
 
-const ITEMS_PER_PAGE = 15
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const
+const DEFAULT_PAGE_SIZE = 50
 
 export default function Charts() {
   const [loading, setLoading] = useState(true)
@@ -31,6 +32,7 @@ export default function Charts() {
   const [sortField, setSortField] = useState<SortField>('rank')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_PAGE_SIZE)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
 
   // Fetch data from API
@@ -166,16 +168,16 @@ export default function Charts() {
   }, [allPlayers, selectedPosition, selectedTeam, selectedScoringFormat, searchQuery, sortField, sortDirection])
 
   // Pagination
-  const totalPages = Math.ceil(filteredAndSortedPlayers.length / ITEMS_PER_PAGE)
+  const totalPages = Math.ceil(filteredAndSortedPlayers.length / itemsPerPage)
 
   // Auto-clamp currentPage to valid range when filters change
   const validCurrentPage = Math.min(currentPage, Math.max(1, totalPages))
 
   const paginatedPlayers = useMemo(() => {
-    const startIndex = (validCurrentPage - 1) * ITEMS_PER_PAGE
-    const endIndex = startIndex + ITEMS_PER_PAGE
+    const startIndex = (validCurrentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
     return filteredAndSortedPlayers.slice(startIndex, endIndex)
-  }, [filteredAndSortedPlayers, validCurrentPage])
+  }, [filteredAndSortedPlayers, validCurrentPage, itemsPerPage])
 
   // Handle sorting
   const handleSort = (field: SortField) => {
@@ -255,7 +257,7 @@ export default function Charts() {
                 <p className="text-sm mt-2">Try adjusting your filters</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div>
                 <PlayerTable
                   players={paginatedPlayers}
                   selectedPosition={selectedPosition}
@@ -269,8 +271,16 @@ export default function Charts() {
                   currentPage={validCurrentPage}
                   totalPages={totalPages}
                   totalItems={filteredAndSortedPlayers.length}
-                  itemsPerPage={ITEMS_PER_PAGE}
-                  onPageChange={setCurrentPage}
+                  itemsPerPage={itemsPerPage}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageChange={(page) => {
+                    setCurrentPage(page)
+                    window.scrollTo({ top: 0 })
+                  }}
+                  onPageSizeChange={(size) => {
+                    setItemsPerPage(size)
+                    setCurrentPage(1)
+                  }}
                 />
               </div>
             )}
