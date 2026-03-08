@@ -12,9 +12,84 @@ import { PositionBadge } from "@/components/position-badge"
 import { Player, Position } from "@/lib/types/player"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useMemo } from "react"
+import type { StatView } from "./filters"
 
-type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries' | 'rushingYards' | 'rushingTDs' | 'targets' | 'receptions' | 'receivingYards' | 'receivingTDs' | 'attempts' | 'completions' | 'passingYards' | 'passingTDs'
+type SortField = 'rank' | 'name' | 'fantasyPoints' | 'pointsPerGame' | 'carries' | 'rushingYards' | 'rushingTDs' | 'targets' | 'receptions' | 'receivingYards' | 'receivingTDs' | 'attempts' | 'completions' | 'passingYards' | 'passingTDs' | 'interceptions' | 'sacks' | 'rushingFumbles' | 'receivingFumbles' | 'targetShare' | 'airYardsShare' | 'wopr' | 'racr' | 'receivingEpa' | 'rushingEpa' | 'passingEpa' | 'passingCpoe' | 'receivingYac' | 'passingYac' | 'receivingFirstDowns' | 'rushingFirstDowns' | 'passingFirstDowns'
 type SortDirection = 'asc' | 'desc'
+
+interface ColumnDef {
+  key: SortField
+  label: string
+  fullName: string
+  format?: (v: number) => string
+}
+
+const fmt1 = (v: number) => v.toFixed(1)
+const fmtPct = (v: number) => (v * 100).toFixed(1) + "%"
+const fmtDec2 = (v: number) => v.toFixed(2)
+
+// "All" mode columns
+const allRushingColumns: ColumnDef[] = [
+  { key: 'carries', label: 'ATT', fullName: 'Rushing Attempts' },
+  { key: 'rushingYards', label: 'YD', fullName: 'Rushing Yards' },
+  { key: 'rushingTDs', label: 'TD', fullName: 'Rushing Touchdowns' },
+  { key: 'rushingFumbles', label: 'FUM', fullName: 'Fumbles' },
+]
+
+const allReceivingColumns: ColumnDef[] = [
+  { key: 'targets', label: 'TAR', fullName: 'Targets' },
+  { key: 'receptions', label: 'REC', fullName: 'Receptions' },
+  { key: 'receivingYards', label: 'YD', fullName: 'Receiving Yards' },
+  { key: 'receivingTDs', label: 'TD', fullName: 'Receiving Touchdowns' },
+]
+
+const allPassingColumns: ColumnDef[] = [
+  { key: 'attempts', label: 'ATT', fullName: 'Passing Attempts' },
+  { key: 'completions', label: 'CMP', fullName: 'Completions' },
+  { key: 'passingYards', label: 'YD', fullName: 'Passing Yards' },
+  { key: 'passingTDs', label: 'TD', fullName: 'Passing Touchdowns' },
+  { key: 'interceptions', label: 'INT', fullName: 'Interceptions' },
+  { key: 'sacks', label: 'SACK', fullName: 'Sacks' },
+]
+
+// Expanded mode columns
+const expandedPassingColumns: ColumnDef[] = [
+  { key: 'attempts', label: 'ATT', fullName: 'Passing Attempts' },
+  { key: 'completions', label: 'CMP', fullName: 'Completions' },
+  { key: 'passingYards', label: 'YD', fullName: 'Passing Yards' },
+  { key: 'passingTDs', label: 'TD', fullName: 'Passing Touchdowns' },
+  { key: 'interceptions', label: 'INT', fullName: 'Interceptions' },
+  { key: 'sacks', label: 'SACK', fullName: 'Sacks' },
+  { key: 'passingYac', label: 'YAC', fullName: 'Yards After Catch' },
+  { key: 'passingFirstDowns', label: '1ST', fullName: 'First Downs' },
+  { key: 'passingEpa', label: 'EPA', fullName: 'Passing EPA', format: fmt1 },
+  { key: 'passingCpoe', label: 'CPOE', fullName: 'Completion % Over Expected', format: fmt1 },
+]
+
+const expandedRushingColumns: ColumnDef[] = [
+  { key: 'carries', label: 'ATT', fullName: 'Rushing Attempts' },
+  { key: 'rushingYards', label: 'YD', fullName: 'Rushing Yards' },
+  { key: 'rushingTDs', label: 'TD', fullName: 'Rushing Touchdowns' },
+  { key: 'rushingFumbles', label: 'FUM', fullName: 'Fumbles' },
+  { key: 'rushingFirstDowns', label: '1ST', fullName: 'First Downs' },
+  { key: 'rushingEpa', label: 'EPA', fullName: 'Rushing EPA', format: fmt1 },
+]
+
+const expandedReceivingColumns: ColumnDef[] = [
+  { key: 'targets', label: 'TAR', fullName: 'Targets' },
+  { key: 'receptions', label: 'REC', fullName: 'Receptions' },
+  { key: 'receivingYards', label: 'YD', fullName: 'Receiving Yards' },
+  { key: 'receivingTDs', label: 'TD', fullName: 'Receiving Touchdowns' },
+  { key: 'receivingFumbles', label: 'FUM', fullName: 'Fumbles' },
+  { key: 'receivingYac', label: 'YAC', fullName: 'Yards After Catch' },
+  { key: 'receivingFirstDowns', label: '1ST', fullName: 'First Downs' },
+  { key: 'receivingEpa', label: 'EPA', fullName: 'Receiving EPA', format: fmt1 },
+  { key: 'targetShare', label: 'TAR%', fullName: 'Target Share', format: fmtPct },
+  { key: 'airYardsShare', label: 'AIR%', fullName: 'Air Yards Share', format: fmtPct },
+  { key: 'wopr', label: 'WOPR', fullName: 'Weighted Opportunity Rating', format: fmtDec2 },
+  { key: 'racr', label: 'RACR', fullName: 'Receiver Air Conversion Ratio', format: fmtDec2 },
+]
 
 interface PlayerTableProps {
   players: Player[]
@@ -23,6 +98,7 @@ interface PlayerTableProps {
   sortDirection: SortDirection
   onSort: (field: SortField) => void
   onPlayerClick: (player: Player) => void
+  statView: StatView
 }
 
 function SortableHeader({
@@ -68,26 +144,15 @@ function SortableHeader({
   )
 }
 
-// Stat columns grouped by category
-const rushingColumns: { key: SortField, label: string, fullName: string }[] = [
-  { key: 'carries', label: 'ATT', fullName: 'Rushing Attempts' },
-  { key: 'rushingYards', label: 'YD', fullName: 'Rushing Yards' },
-  { key: 'rushingTDs', label: 'TD', fullName: 'Rushing Touchdowns' },
-]
-
-const receivingColumns: { key: SortField, label: string, fullName: string }[] = [
-  { key: 'targets', label: 'TAR', fullName: 'Targets' },
-  { key: 'receptions', label: 'REC', fullName: 'Receptions' },
-  { key: 'receivingYards', label: 'YD', fullName: 'Receiving Yards' },
-  { key: 'receivingTDs', label: 'TD', fullName: 'Receiving Touchdowns' },
-]
-
-const passingColumns: { key: SortField, label: string, fullName: string }[] = [
-  { key: 'attempts', label: 'ATT', fullName: 'Passing Attempts' },
-  { key: 'completions', label: 'CMP', fullName: 'Completions' },
-  { key: 'passingYards', label: 'YD', fullName: 'Passing Yards' },
-  { key: 'passingTDs', label: 'TD', fullName: 'Passing Touchdowns' },
-]
+function formatStat(value: number | undefined, format?: (v: number) => string): string {
+  if (value === undefined || value === null) return '—'
+  if (format) {
+    const result = format(value)
+    if (result === '0.0%' || result === '0.00' || result === '0.0') return '—'
+    return result
+  }
+  return value !== 0 ? String(Math.round(value)) : '—'
+}
 
 export function PlayerTable({
   players,
@@ -96,43 +161,64 @@ export function PlayerTable({
   sortDirection,
   onSort,
   onPlayerClick,
+  statView,
 }: PlayerTableProps) {
-  // Determine column group order based on selected position
-  const getColumnGroupOrder = () => {
+  const columnLayout = useMemo(() => {
+    if (statView === 'passing') {
+      return { groups: [{ key: 'passing', label: 'PASSING', columns: expandedPassingColumns }] }
+    }
+    if (statView === 'rushing') {
+      return { groups: [{ key: 'rushing', label: 'RUSHING', columns: expandedRushingColumns }] }
+    }
+    if (statView === 'receiving') {
+      return { groups: [{ key: 'receiving', label: 'RECEIVING', columns: expandedReceivingColumns }] }
+    }
+    // "all" — order based on selected position
     switch (selectedPosition) {
       case 'QB':
-        return [
-          { key: 'passing', label: 'PASSING', columns: passingColumns },
-          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
-          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
-        ]
-      case 'RB':
-        return [
-          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
-          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
-          { key: 'passing', label: 'PASSING', columns: passingColumns },
-        ]
+        return {
+          groups: [
+            { key: 'passing', label: 'PASSING', columns: allPassingColumns },
+            { key: 'rushing', label: 'RUSHING', columns: allRushingColumns },
+            { key: 'receiving', label: 'RECEIVING', columns: allReceivingColumns },
+          ],
+        }
       case 'WR':
       case 'TE':
-        return [
-          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
-          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
-          { key: 'passing', label: 'PASSING', columns: passingColumns },
-        ]
-      case 'ALL':
+        return {
+          groups: [
+            { key: 'receiving', label: 'RECEIVING', columns: allReceivingColumns },
+            { key: 'rushing', label: 'RUSHING', columns: allRushingColumns },
+            { key: 'passing', label: 'PASSING', columns: allPassingColumns },
+          ],
+        }
+      case 'RB':
+        return {
+          groups: [
+            { key: 'rushing', label: 'RUSHING', columns: allRushingColumns },
+            { key: 'receiving', label: 'RECEIVING', columns: allReceivingColumns },
+            { key: 'passing', label: 'PASSING', columns: allPassingColumns },
+          ],
+        }
       default:
-        return [
-          { key: 'rushing', label: 'RUSHING', columns: rushingColumns },
-          { key: 'receiving', label: 'RECEIVING', columns: receivingColumns },
-          { key: 'passing', label: 'PASSING', columns: passingColumns },
-        ]
+        return {
+          groups: [
+            { key: 'rushing', label: 'RUSHING', columns: allRushingColumns },
+            { key: 'receiving', label: 'RECEIVING', columns: allReceivingColumns },
+            { key: 'passing', label: 'PASSING', columns: allPassingColumns },
+          ],
+        }
     }
-  }
+  }, [statView, selectedPosition])
 
-  const columnGroups = getColumnGroupOrder()
+  const allVisibleColumns = useMemo(() => {
+    return columnLayout.groups.flatMap((g) =>
+      g.columns.map((col, i) => ({ group: g.key, col, isFirst: i === 0 }))
+    )
+  }, [columnLayout])
 
   return (
-    <div className="border rounded-md">
+    <div className="border rounded-md overflow-x-auto">
       <Table className="[&_tbody_tr]:border-0">
         <TableHeader>
           <TableRow>
@@ -144,11 +230,11 @@ export function PlayerTable({
             <TableHead colSpan={2} className="text-center text-xs font-semibold">
               FANTASY
             </TableHead>
-            {columnGroups.map((group, index) => (
+            {columnLayout.groups.map((group) => (
               <TableHead
                 key={group.key}
                 colSpan={group.columns.length}
-                className="text-center text-xs font-semibold hidden md:table-cell"
+                className="text-center text-xs font-semibold"
               >
                 {group.label}
               </TableHead>
@@ -194,30 +280,25 @@ export function PlayerTable({
               onSort={onSort}
               className="w-16"
             />
-            {columnGroups.map((group, groupIndex) =>
-              group.columns.map((col, colIndex) => (
-                <SortableHeader
-                  key={col.key}
-                  field={col.key}
-                  label={col.label}
-                  fullName={col.fullName}
-                  currentField={sortField}
-                  direction={sortDirection}
-                  onSort={onSort}
-                  className={cn(
-                    "hidden md:table-cell",
-                    colIndex === 0 && "pl-4"
-                  )}
-                />
-              ))
-            )}
+            {allVisibleColumns.map(({ col, isFirst }) => (
+              <SortableHeader
+                key={col.key}
+                field={col.key}
+                label={col.label}
+                fullName={col.fullName}
+                currentField={sortField}
+                direction={sortDirection}
+                onSort={onSort}
+                className={cn(isFirst && "pl-4")}
+              />
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {players.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={7 + rushingColumns.length + receivingColumns.length + passingColumns.length}
+                colSpan={7 + allVisibleColumns.length}
                 className="text-center py-8 text-muted-foreground"
               >
                 No players found
@@ -244,7 +325,7 @@ export function PlayerTable({
                     ) : (
                       <div className="h-9 w-9 -mt-1.5 -mb-1 rounded-full bg-muted" />
                     )}
-                    <span className="font-medium">{player.name}</span>
+                    <span className="font-medium hover:underline cursor-pointer">{player.name}</span>
                   </div>
                 </TableCell>
                 <TableCell className="text-center">
@@ -262,23 +343,20 @@ export function PlayerTable({
                 <TableCell className="text-center">
                   {player.pointsPerGame.toFixed(1)}
                 </TableCell>
-                {columnGroups.map((group, groupIndex) =>
-                  group.columns.map((col, colIndex) => {
-                    const value = player[col.key as keyof Player]
-                    const formattedValue = typeof value === 'number' ? Math.round(value) : '-'
-                    return (
-                      <TableCell
-                        key={col.key}
-                        className={cn(
-                          "text-center text-sm hidden md:table-cell",
-                          colIndex === 0 && "pl-4"
-                        )}
-                      >
-                        {formattedValue}
-                      </TableCell>
-                    )
-                  })
-                )}
+                {allVisibleColumns.map(({ col, isFirst }) => {
+                  const value = player[col.key as keyof Player] as number | undefined
+                  return (
+                    <TableCell
+                      key={col.key}
+                      className={cn(
+                        "text-center text-sm tabular-nums",
+                        isFirst && "pl-4"
+                      )}
+                    >
+                      {formatStat(value, col.format)}
+                    </TableCell>
+                  )
+                })}
               </TableRow>
             ))
           )}

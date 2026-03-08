@@ -44,6 +44,11 @@ export function mapSeasonStatsToPlayer(
   player.passingYards = stats.passing_yards
   player.passingTDs = stats.passing_tds
   player.interceptions = stats.passing_interceptions
+  player.sacks = stats.sacks_suffered
+
+  // Fumbles
+  player.rushingFumbles = stats.rushing_fumbles
+  player.receivingFumbles = stats.receiving_fumbles
 
   // Advanced stats
   player.targetShare = stats.target_share

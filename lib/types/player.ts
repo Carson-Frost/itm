@@ -16,17 +16,20 @@ export interface Player {
   passingYards?: number
   passingTDs?: number
   interceptions?: number
+  sacks?: number
 
   // Rushing stats
   carries?: number
   rushingYards?: number
   rushingTDs?: number
+  rushingFumbles?: number
 
   // Receiving stats
   targets?: number
   receptions?: number
   receivingYards?: number
   receivingTDs?: number
+  receivingFumbles?: number
 
   // Advanced stats
   targetShare?: number

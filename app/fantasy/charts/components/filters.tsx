@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { nflTeamsByName, nflDivisions, nflConferences, getTeamFilterLabel } from "@/lib/team-utils"
 
 type ScoringFormat = 'PPR' | 'Half PPR' | 'STD'
+export type StatView = 'all' | 'passing' | 'rushing' | 'receiving'
 
 interface FiltersProps {
   selectedPosition: Position | 'ALL'
@@ -30,6 +31,8 @@ interface FiltersProps {
   selectedSeason: number | null
   onSeasonChange: (season: number) => void
   availableSeasons: { year: number; label: string }[]
+  statView: StatView
+  onStatViewChange: (view: StatView) => void
 }
 
 export function Filters({
@@ -45,6 +48,8 @@ export function Filters({
   selectedSeason,
   onSeasonChange,
   availableSeasons,
+  statView,
+  onStatViewChange,
 }: FiltersProps) {
   return (
     <div className="pb-3">
@@ -72,6 +77,21 @@ export function Filters({
                 </Button>
               )}
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-muted-foreground">STATS</label>
+            <Select value={statView} onValueChange={(v) => onStatViewChange(v as StatView)}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="passing">Passing</SelectItem>
+                <SelectItem value="rushing">Rushing</SelectItem>
+                <SelectItem value="receiving">Receiving</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

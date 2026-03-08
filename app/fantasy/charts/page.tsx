@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
-import { Filters } from "./components/filters"
+import { Filters, StatView } from "./components/filters"
 import { PlayerTable } from "./components/player-table"
 import { Pagination } from "./components/pagination"
 import { TableSkeleton } from "./components/table-skeleton"
@@ -33,6 +33,7 @@ export default function Charts() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_PAGE_SIZE)
+  const [statView, setStatView] = useState<StatView>('all')
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
 
   // Fetch data from API
@@ -242,6 +243,8 @@ export default function Charts() {
               selectedSeason={selectedSeason}
               onSeasonChange={handleSeasonChange}
               availableSeasons={availableSeasons}
+              statView={statView}
+              onStatViewChange={setStatView}
             />
 
             {loading ? (
@@ -265,6 +268,7 @@ export default function Charts() {
                   sortDirection={sortDirection}
                   onSort={handleSort}
                   onPlayerClick={handlePlayerClick}
+                  statView={statView}
                 />
 
                 <Pagination
