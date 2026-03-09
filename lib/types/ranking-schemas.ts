@@ -73,3 +73,19 @@ export interface SleeperADP {
   adp_std: number
   updated_at: string
 }
+
+// Yahoo ADP data stored in SQLite
+export interface YahooADP {
+  id: string
+  season: number
+  player_id: string
+  player_name: string
+  position: string
+  team: string
+  headshot_url: string | null
+  yahoo_player_id: number
+  adp: number
+  adp_round: number
+  percent_drafted: number
+  updated_at: string
+}

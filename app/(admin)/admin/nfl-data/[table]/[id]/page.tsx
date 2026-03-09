@@ -107,6 +107,12 @@ const FIELD_ORDER: Record<string, string[]> = {
     "adp_ppr", "adp_half_ppr", "adp_std",
     "updated_at", "id",
   ],
+  yahoo_adp: [
+    "player_name", "player_id", "headshot_url",
+    "position", "team", "season",
+    "yahoo_player_id", "adp", "adp_round", "percent_drafted",
+    "updated_at", "id",
+  ],
   metadata: ["key", "value"],
 }
 
@@ -159,6 +165,13 @@ const FIELD_GROUPS: Record<string, Record<string, string>> = {
     adp_ppr: "ADP Values",
     updated_at: "Metadata",
   },
+  yahoo_adp: {
+    player_name: "Player",
+    position: "Position & Team",
+    yahoo_player_id: "Yahoo Info",
+    adp: "ADP Values",
+    updated_at: "Metadata",
+  },
   metadata: {},
 }
 
@@ -205,6 +218,7 @@ function getRecordTitle(table: string, row: Record<string, unknown>): string {
       return `${away} @ ${home}`
     }
     case "sleeper_adp":
+    case "yahoo_adp":
       return String(row.player_name || "Unknown Player")
     case "metadata":
       return String(row.key || "—")
@@ -224,6 +238,7 @@ function getRecordSubtitle(table: string, row: Record<string, unknown>): string 
     case "schedule_data":
       return [`Week ${row.week}`, row.season, row.gameday].filter(Boolean).join(" · ")
     case "sleeper_adp":
+    case "yahoo_adp":
       return [row.position, row.team, row.season].filter(Boolean).join(" · ")
     default:
       return null
@@ -499,6 +514,7 @@ const TABLES: Record<string, string> = {
   weekly_stats: "Weekly Stats",
   schedule_data: "Schedule",
   sleeper_adp: "Sleeper ADP",
+  yahoo_adp: "Yahoo ADP",
   metadata: "Metadata",
 }
 

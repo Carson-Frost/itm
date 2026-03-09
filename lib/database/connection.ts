@@ -39,12 +39,12 @@ function initializeSchema(database: Database.Database) {
   // Check if tables exist
   const tables = database
     .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('metadata', 'roster_data', 'season_stats', 'weekly_stats', 'schedule_data', 'sleeper_adp')"
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('metadata', 'roster_data', 'season_stats', 'weekly_stats', 'schedule_data', 'sleeper_adp', 'yahoo_adp')"
     )
     .all()
 
   // If all tables exist, skip initialization
-  if (tables.length === 6) {
+  if (tables.length === 7) {
     return
   }
 

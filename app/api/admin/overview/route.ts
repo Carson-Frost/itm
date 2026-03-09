@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const db = getDatabase()
 
   // Get table row counts
-  const tables = ["roster_data", "season_stats", "weekly_stats", "schedule_data", "sleeper_adp", "metadata"]
+  const tables = ["roster_data", "season_stats", "weekly_stats", "schedule_data", "sleeper_adp", "yahoo_adp", "metadata"]
   const dbTables = tables.map((name) => {
     try {
       const row = db.prepare(`SELECT COUNT(*) as count FROM ${name}`).get() as { count: number }

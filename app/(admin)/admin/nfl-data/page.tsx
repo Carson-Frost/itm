@@ -30,6 +30,7 @@ const TABLES = [
   { value: "weekly_stats", label: "Weekly Stats" },
   { value: "schedule_data", label: "Schedule" },
   { value: "sleeper_adp", label: "Sleeper ADP" },
+  { value: "yahoo_adp", label: "Yahoo ADP" },
   { value: "metadata", label: "Metadata" },
 ]
 
@@ -412,6 +413,7 @@ function getPrimaryKey(table: string): string {
     weekly_stats: "id",
     schedule_data: "game_id",
     sleeper_adp: "id",
+    yahoo_adp: "id",
     metadata: "key",
   }
   return keys[table] || "id"

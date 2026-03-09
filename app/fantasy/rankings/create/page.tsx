@@ -42,6 +42,7 @@ import {
   TeamFilter,
   RankedPlayer,
   SleeperADP,
+  YahooADP,
 } from "@/lib/types/ranking-schemas"
 import { nflTeamsByName, nflDivisions, nflConferences, teamMatchesFilter, getTeamFilterLabel } from "@/lib/team-utils"
 import { cn } from "@/lib/utils"
@@ -161,7 +162,7 @@ export default function CreateRanking() {
     try {
       let players: RankedPlayer[] = []
 
-      if (base !== "blank") {
+      if (base === "sleeper-adp") {
         const response = await fetch('/api/sleeper/adp')
         if (!response.ok) {
           throw new Error('Failed to fetch ADP data')
@@ -186,6 +187,36 @@ export default function CreateRanking() {
           if (scoring === "Half") return a.adp_half_ppr - b.adp_half_ppr
           return a.adp_std - b.adp_std
         })
+
+        players = filteredPlayers.map((player, index) => ({
+          rank: index + 1,
+          playerId: player.player_id,
+          name: player.player_name,
+          position: player.position as FantasyPosition,
+          team: player.team,
+          headshotUrl: player.headshot_url || undefined,
+        }))
+      } else if (base === "yahoo-adp") {
+        const response = await fetch('/api/yahoo/adp')
+        if (!response.ok) {
+          const err = await response.json()
+          throw new Error(err.message || 'Failed to fetch Yahoo ADP data')
+        }
+
+        const { adp } = await response.json() as { adp: YahooADP[] }
+
+        let filteredPlayers = adp.filter((player) =>
+          positions.includes(player.position as FantasyPosition)
+        )
+
+        if (teamFilter !== "ALL") {
+          filteredPlayers = filteredPlayers.filter((player) =>
+            teamMatchesFilter(player.team, teamFilter)
+          )
+        }
+
+        // Yahoo ADP is a single value (not per scoring format)
+        filteredPlayers.sort((a, b) => a.adp - b.adp)
 
         players = filteredPlayers.map((player, index) => ({
           rank: index + 1,

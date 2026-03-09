@@ -10,6 +10,7 @@ const ALLOWED_TABLES = [
   "weekly_stats",
   "schedule_data",
   "sleeper_adp",
+  "yahoo_adp",
   "metadata",
 ] as const
 
@@ -22,6 +23,7 @@ const EDITABLE_FIELDS: Record<string, string[]> = {
   weekly_stats: ["position", "position_group", "headshot_url"],
   schedule_data: ["location", "stadium"],
   sleeper_adp: ["position", "team"],
+  yahoo_adp: ["position", "team"],
   metadata: ["value"],
 }
 
@@ -32,6 +34,7 @@ const PRIMARY_KEYS: Record<string, string> = {
   weekly_stats: "id",
   schedule_data: "game_id",
   sleeper_adp: "id",
+  yahoo_adp: "id",
   metadata: "key",
 }
 
@@ -42,6 +45,7 @@ const FILTER_COLUMNS: Record<string, string[]> = {
   weekly_stats: ["position", "team", "season", "week", "season_type"],
   schedule_data: ["season", "week", "game_type"],
   sleeper_adp: ["position", "team", "season"],
+  yahoo_adp: ["position", "team", "season"],
   metadata: [],
 }
 
@@ -52,6 +56,7 @@ const TABLE_DISPLAY_COLUMNS: Record<string, string[]> = {
   weekly_stats: ["player_display_name", "position", "team", "season", "week", "passing_yards", "rushing_yards", "receiving_yards", "fantasy_points_ppr"],
   schedule_data: ["season", "week", "game_type", "away_team", "away_score", "home_team", "home_score", "gameday"],
   sleeper_adp: ["player_name", "position", "team", "season", "adp_ppr", "adp_half_ppr", "adp_std"],
+  yahoo_adp: ["player_name", "position", "team", "season", "adp", "adp_round", "percent_drafted"],
   metadata: ["key", "value"],
 }
 

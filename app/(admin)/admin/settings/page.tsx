@@ -6,11 +6,77 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { useAdmin } from "../layout"
 
 export default function SettingsPage() {
   const admin = useAdmin()
+
+  // Yahoo connection state
+  const [yahooStatus, setYahooStatus] = useState<{
+    isConnected: boolean
+    isConfigured: boolean
+  } | null>(null)
+  const [yahooLoading, setYahooLoading] = useState(true)
+  const [showDisconnect, setShowDisconnect] = useState(false)
+
+  // Check for OAuth callback messages
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("yahoo_connected") === "true") {
+      toast.success("Yahoo connected successfully")
+      window.history.replaceState({}, "", "/admin/settings")
+    }
+    if (params.get("yahoo_error")) {
+      toast.error(`Yahoo error: ${params.get("yahoo_error")}`)
+      window.history.replaceState({}, "", "/admin/settings")
+    }
+  }, [])
+
+  // Fetch Yahoo connection status
+  useEffect(() => {
+    async function fetchStatus() {
+      try {
+        const res = await fetch("/api/yahoo/status")
+        if (res.ok) {
+          setYahooStatus(await res.json())
+        }
+      } catch {
+        // silent
+      } finally {
+        setYahooLoading(false)
+      }
+    }
+    fetchStatus()
+  }, [])
+
+  const handleYahooConnect = () => {
+    window.location.href = "/api/yahoo/auth"
+  }
+
+  const handleYahooDisconnect = async () => {
+    try {
+      const res = await fetch("/api/yahoo/status", { method: "DELETE" })
+      if (res.ok) {
+        setYahooStatus((prev) => prev ? { ...prev, isConnected: false } : null)
+        toast.success("Yahoo disconnected")
+      }
+    } catch {
+      toast.error("Failed to disconnect Yahoo")
+    } finally {
+      setShowDisconnect(false)
+    }
+  }
 
   return (
     <div className="max-w-2xl">
@@ -43,6 +109,88 @@ export default function SettingsPage() {
           </Badge>
         </div>
       </div>
+
+      {/* Yahoo Integration */}
+      <h2 className="text-lg font-semibold mb-3">Yahoo Fantasy</h2>
+      <div className="border-3 border-border mb-8">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <span className="text-sm text-muted-foreground">OAuth Credentials</span>
+          {yahooLoading ? (
+            <Skeleton className="h-5 w-20" />
+          ) : (
+            <Badge
+              variant="outline"
+              className={`text-xs ${
+                yahooStatus?.isConfigured
+                  ? "text-primary"
+                  : "text-yellow-600"
+              }`}
+            >
+              {yahooStatus?.isConfigured ? "Configured" : "Not Configured"}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <span className="text-sm text-muted-foreground">Connection Status</span>
+          {yahooLoading ? (
+            <Skeleton className="h-5 w-20" />
+          ) : (
+            <Badge
+              variant="outline"
+              className={`text-xs ${
+                yahooStatus?.isConnected
+                  ? "text-primary"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {yahooStatus?.isConnected ? "Connected" : "Not Connected"}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="text-sm text-muted-foreground">
+            {yahooStatus?.isConnected
+              ? "Disconnect to revoke access"
+              : "Connect to enable Yahoo ADP data"}
+          </span>
+          {yahooStatus?.isConnected ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDisconnect(true)}
+            >
+              Disconnect
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={handleYahooConnect}
+              disabled={!yahooStatus?.isConfigured}
+            >
+              Connect Yahoo
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <AlertDialog open={showDisconnect} onOpenChange={setShowDisconnect}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Yahoo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the stored OAuth tokens. Yahoo ADP data already
+              imported will remain in the database, but new data cannot be
+              fetched until reconnected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleYahooDisconnect}>
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Environment Info */}
       <h2 className="text-lg font-semibold mb-3">Environment</h2>

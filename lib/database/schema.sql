@@ -328,3 +328,24 @@ CREATE TABLE IF NOT EXISTS sleeper_adp (
 
 CREATE INDEX IF NOT EXISTS idx_sleeper_adp_season ON sleeper_adp(season);
 CREATE INDEX IF NOT EXISTS idx_sleeper_adp_position ON sleeper_adp(position);
+
+-- ============================================================
+-- YAHOO ADP TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS yahoo_adp (
+  id TEXT PRIMARY KEY,
+  season INTEGER,
+  player_id TEXT,
+  player_name TEXT,
+  position TEXT,
+  team TEXT,
+  headshot_url TEXT,
+  yahoo_player_id INTEGER,
+  adp REAL,
+  adp_round REAL,
+  percent_drafted REAL,
+  updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_yahoo_adp_season ON yahoo_adp(season);
+CREATE INDEX IF NOT EXISTS idx_yahoo_adp_position ON yahoo_adp(position);
