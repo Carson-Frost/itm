@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { PositionBadge } from "@/components/position-badge"
-import { Eye, EyeOff, SkipForward, ChevronRight } from "lucide-react"
+import { Eye, EyeOff, SkipForward, ChevronRight, Undo2 } from "lucide-react"
 import { DraftPickDialog } from "./draft-pick-dialog"
 import {
   type TriviaDraftSettings,
@@ -39,13 +39,11 @@ function getSlotForPick(
   const filledSlotIds = new Set(playerPicks.map((p) => p.slotLabel))
 
   if (settings.onePositionAtATime) {
-    // In this mode, all players fill the same slot position each round
     const round = Math.floor(pickNumber / settings.players.length)
     const slot = settings.lineupSlots[round]
     return slot || null
   }
 
-  // Free pick mode: find the next unfilled slot
   for (const slot of settings.lineupSlots) {
     if (!filledSlotIds.has(slot.label)) {
       return slot
@@ -56,10 +54,9 @@ function getSlotForPick(
 
 export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   const { settings } = session
-  const draft = session.drafts[session.currentDraftIndex] || null
   const currentCategoryId = session.categoryIds[session.currentDraftIndex]
 
-  const [draftState, setDraftState] = useState<DraftState>(() => ({
+  const [draftState, setDraftState] = useState<DraftState>({
     draftNumber: session.currentDraftIndex + 1,
     categoryId: currentCategoryId,
     categoryName: "",
@@ -68,33 +65,45 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
     currentPlayerIndex: 0,
     picks: [],
     phase: "drafting",
-  }))
+  })
 
   const [isPickDialogOpen, setIsPickDialogOpen] = useState(false)
   const [showPoints, setShowPoints] = useState(false)
   const [availableSeasons, setAvailableSeasons] = useState<number[]>([])
   const [categoryName, setCategoryName] = useState("")
 
-  // Fetch category name (just the name, not valid players)
+  // Reset draft state when currentDraftIndex changes
   useEffect(() => {
-    async function fetchCategoryName() {
+    const catId = session.categoryIds[session.currentDraftIndex]
+    setDraftState({
+      draftNumber: session.currentDraftIndex + 1,
+      categoryId: catId,
+      categoryName: "",
+      round: 1,
+      pickNumber: 0,
+      currentPlayerIndex: 0,
+      picks: [],
+      phase: "drafting",
+    })
+    setShowPoints(false)
+    setCategoryName("")
+
+    // Fetch category name
+    async function fetchCatName() {
       try {
-        const res = await fetch("/api/games/trivia-categories")
+        const res = await fetch(`/api/games/trivia-categories/${catId}`)
         if (res.ok) {
           const data = await res.json()
-          const cat = data.categories?.find(
-            (c: { id: string }) => c.id === currentCategoryId
-          )
-          if (cat) setCategoryName(cat.name)
+          setCategoryName(data.name || "")
         }
       } catch {
         // silent
       }
     }
-    fetchCategoryName()
-  }, [currentCategoryId])
+    fetchCatName()
+  }, [session.currentDraftIndex, session.categoryIds])
 
-  // Fetch available seasons
+  // Fetch available seasons once
   useEffect(() => {
     async function fetchSeasons() {
       try {
@@ -113,7 +122,9 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   const usedPlayerSeasons = useMemo(() => {
     const set = new Set(session.usedPlayerSeasons)
     draftState.picks.forEach((p) => {
-      set.add(`${p.nflPlayer.playerId}-${p.nflPlayer.season}`)
+      if (p.nflPlayer.playerId !== "PASS") {
+        set.add(`${p.nflPlayer.playerId}-${p.nflPlayer.season}`)
+      }
     })
     return set
   }, [session.usedPlayerSeasons, draftState.picks])
@@ -135,7 +146,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
 
   const isDraftComplete = draftState.pickNumber >= totalPicks
 
-  // Build the board data: for each player, their picks organized by slot
+  // Build the board data
   const boardData = useMemo(() => {
     return settings.players.map((player) => {
       const playerPicks = draftState.picks.filter(
@@ -220,6 +231,15 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
     }))
   }, [draftState.pickNumber, currentRound, currentPlayer, currentSlot])
 
+  const handleUndoPick = useCallback(() => {
+    if (draftState.picks.length === 0) return
+    setDraftState((prev) => ({
+      ...prev,
+      picks: prev.picks.slice(0, -1),
+      pickNumber: prev.pickNumber - 1,
+    }))
+  }, [draftState.picks.length])
+
   // Reveal results
   const handleReveal = useCallback(async () => {
     setDraftState((prev) => ({ ...prev, phase: "revealing" }))
@@ -252,13 +272,13 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         } else if (settings.invalidPickPenalty === "skip") {
           pointsAwarded = 0
         } else {
+          // "none" - still give them the fantasy points
           pointsAwarded = pick.fantasyPointsPpr
         }
 
         return { ...pick, fitsCategory: fits, pointsAwarded }
       })
 
-      // Calculate scores per player
       const scores: Record<string, number> = {}
       settings.players.forEach((p) => {
         scores[p.id] = scoredPicks
@@ -287,8 +307,8 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         phase: "complete",
         revealedPlayers: validPlayers,
       }))
+      setShowPoints(true)
 
-      // Update session
       const newDrafts = [...session.drafts]
       newDrafts[session.currentDraftIndex] = draftResult
 
@@ -296,9 +316,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         ...session.usedPlayerSeasons,
         ...scoredPicks
           .filter((p) => p.nflPlayer.playerId !== "PASS")
-          .map(
-            (p) => `${p.nflPlayer.playerId}-${p.nflPlayer.season}`
-          ),
+          .map((p) => `${p.nflPlayer.playerId}-${p.nflPlayer.season}`),
       ]
 
       onSessionUpdate({
@@ -307,7 +325,6 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         usedPlayerSeasons: newUsedPlayerSeasons,
       })
     } catch {
-      // If reveal fails, still mark as complete with unscored picks
       setDraftState((prev) => ({ ...prev, phase: "complete" }))
     }
   }, [
@@ -356,7 +373,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
             </span>
             {currentSlot && settings.onePositionAtATime && (
               <span className="font-mono bg-muted px-2 py-0.5 text-xs">
-                Drafting: {currentSlot.label}
+                {currentSlot.label}
               </span>
             )}
           </div>
@@ -379,7 +396,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
 
       {/* Action Buttons */}
       {draftState.phase === "drafting" && !isDraftComplete && (
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button
             onClick={() => setIsPickDialogOpen(true)}
             className="btn-chamfer h-10 px-6 font-bold"
@@ -393,6 +410,15 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
           >
             <SkipForward className="size-3.5 mr-1" />
             Pass
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleUndoPick}
+            disabled={draftState.picks.length === 0}
+          >
+            <Undo2 className="size-3.5 mr-1" />
+            Undo
           </Button>
           <Button
             variant="outline"
@@ -420,6 +446,14 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         </div>
       )}
 
+      {draftState.phase === "revealing" && (
+        <div className="flex justify-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+            Revealing results...
+          </div>
+        </div>
+      )}
+
       {draftState.phase === "complete" && (
         <div className="flex justify-center gap-2">
           {isLastDraft ? (
@@ -427,7 +461,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
               onClick={handleFinishGame}
               className="btn-chamfer h-10 px-6 font-bold"
             >
-              Final Results
+              {settings.numberOfDrafts > 1 ? "Final Results" : "Results"}
             </Button>
           ) : (
             <Button
@@ -442,7 +476,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
       )}
 
       {/* Draft Board Grid */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto -mx-3 px-3">
         <div
           className="grid gap-px bg-border min-w-fit"
           style={{
@@ -476,12 +510,9 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
 
           {/* Rows per lineup slot */}
           {settings.lineupSlots.map((slot, slotIndex) => (
-            <>
+            <div key={`row-${slot.id}`} className="contents">
               {/* Slot label */}
-              <div
-                key={`label-${slot.id}`}
-                className="bg-muted/30 p-2 flex items-center justify-center"
-              >
+              <div className="bg-muted/30 p-2 flex items-center justify-center">
                 <span className="text-xs font-mono font-bold text-muted-foreground">
                   {slot.label}
                 </span>
@@ -522,7 +553,7 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
                   </div>
                 )
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>

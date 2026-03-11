@@ -27,21 +27,19 @@ export function Navbar() {
         <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger onClick={(e) => {
-            if (e.currentTarget.getAttribute('data-state') === 'open') {
-              e.preventDefault()
-            }
-          }}>Games</NavigationMenuTrigger>
-          <NavigationMenuContent>
-            <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
-              <ListItem href="/connections" title="Connections">
-                Match NFL players into hidden categories.
-              </ListItem>
-              <ListItem href="/games/trivia-draft" title="Trivia Draft">
-                Draft players against a hidden category and compete for points.
-              </ListItem>
-            </ul>
-          </NavigationMenuContent>
+          <Link href="/connections" legacyBehavior passHref>
+            <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+              Connections
+            </NavigationMenuLink>
+          </Link>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
+          <Link href="/games/trivia-draft" legacyBehavior passHref>
+            <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+              Trivia Draft
+            </NavigationMenuLink>
+          </Link>
         </NavigationMenuItem>
 
         <NavigationMenuItem>

@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -14,7 +13,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Minus, X, Users, Trophy, Settings2, Play, Shuffle } from "lucide-react"
+import {
+  Plus,
+  Minus,
+  X,
+  ChevronRight,
+  ChevronLeft,
+  Play,
+  Users,
+  ListOrdered,
+  Settings2,
+} from "lucide-react"
 import {
   type TriviaDraftSettings,
   type DraftPlayer,
@@ -27,12 +36,6 @@ import {
 } from "@/lib/types/trivia-draft"
 import { cn } from "@/lib/utils"
 
-interface CategoryOption {
-  id: string
-  name: string
-  description: string
-}
-
 interface GameSetupProps {
   onStart: (settings: TriviaDraftSettings, categoryIds: string[], penaltyPoints: number) => void
 }
@@ -41,31 +44,48 @@ function generateId() {
   return Math.random().toString(36).slice(2, 9)
 }
 
+const STEPS = [
+  { id: "players", label: "Players", icon: Users },
+  { id: "lineup", label: "Lineup", icon: ListOrdered },
+  { id: "settings", label: "Settings", icon: Settings2 },
+] as const
+
+type StepId = (typeof STEPS)[number]["id"]
+
+const POSITION_ORDER: SlotPosition[] = ["QB", "RB", "WR", "TE", "FLEX", "SUPERFLEX"]
+
 export function GameSetup({ onStart }: GameSetupProps) {
+  const [step, setStep] = useState<StepId>("players")
+
+  // Players
   const [playerCount, setPlayerCount] = useState(2)
   const [players, setPlayers] = useState<DraftPlayer[]>([
     { id: generateId(), name: "", color: PLAYER_COLORS[0] },
     { id: generateId(), name: "", color: PLAYER_COLORS[1] },
   ])
+
+  // Lineup
+  const [lineupSlots, setLineupSlots] = useState<LineupSlot[]>(DEFAULT_LINEUP_SLOTS)
+  const [hasSuperFlex, setHasSuperFlex] = useState(false)
+
+  // Settings
   const [numberOfDrafts, setNumberOfDrafts] = useState(1)
   const [onePositionAtATime, setOnePositionAtATime] = useState(true)
-  const [hasSuperFlex, setHasSuperFlex] = useState(false)
   const [invalidPickPenalty, setInvalidPickPenalty] = useState<InvalidPickPenalty>("points")
   const [penaltyPoints, setPenaltyPoints] = useState(25)
   const [scoringFormat, setScoringFormat] = useState<"PPR" | "Half" | "STD">("PPR")
-  const [lineupSlots, setLineupSlots] = useState<LineupSlot[]>(DEFAULT_LINEUP_SLOTS)
 
-  const [categories, setCategories] = useState<CategoryOption[]>([])
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([""])
+  // Categories loaded in background
+  const [hasCategories, setHasCategories] = useState(false)
   const [loadingCategories, setLoadingCategories] = useState(true)
 
   useEffect(() => {
-    async function fetchCategories() {
+    async function checkCategories() {
       try {
         const res = await fetch("/api/games/trivia-categories")
         if (res.ok) {
           const data = await res.json()
-          setCategories(data.categories || [])
+          setHasCategories((data.categories || []).length > 0)
         }
       } catch {
         // silent fail
@@ -73,12 +93,12 @@ export function GameSetup({ onStart }: GameSetupProps) {
         setLoadingCategories(false)
       }
     }
-    fetchCategories()
+    checkCategories()
   }, [])
 
-  // Sync player count with players array
+  // Sync player count
   function handlePlayerCountChange(newCount: number) {
-    const clamped = Math.max(1, Math.min(10, newCount))
+    const clamped = Math.max(2, Math.min(10, newCount))
     setPlayerCount(clamped)
     setPlayers((prev) => {
       if (clamped > prev.length) {
@@ -99,18 +119,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
     )
   }
 
-  // Sync drafts with category selections
-  function handleDraftCountChange(count: number) {
-    const clamped = Math.max(1, Math.min(10, count))
-    setNumberOfDrafts(clamped)
-    setSelectedCategoryIds((prev) => {
-      if (clamped > prev.length) {
-        return [...prev, ...Array(clamped - prev.length).fill("")]
-      }
-      return prev.slice(0, clamped)
-    })
-  }
-
   // Superflex toggle
   useEffect(() => {
     setLineupSlots((prev) => {
@@ -122,45 +130,78 @@ export function GameSetup({ onStart }: GameSetupProps) {
     })
   }, [hasSuperFlex])
 
-  function addSlot(position: SlotPosition) {
-    const countOfPos = lineupSlots.filter((s) => s.position === position).length
-    const label =
-      position === "FLEX"
-        ? `FLEX${countOfPos + 1}`
-        : position === "SUPERFLEX"
-        ? `SFLEX${countOfPos + 1}`
-        : `${position}${countOfPos + 1}`
-    setLineupSlots((prev) => [
-      ...prev,
-      { id: generateId(), position, label },
-    ])
+  // Lineup position helpers
+  function getPositionCount(pos: SlotPosition) {
+    return lineupSlots.filter((s) => s.position === pos).length
   }
 
-  function removeSlot(id: string) {
-    setLineupSlots((prev) => prev.filter((s) => s.id !== id))
+  function setPositionCount(pos: SlotPosition, count: number) {
+    const clamped = Math.max(0, Math.min(6, count))
+    setLineupSlots((prev) => {
+      const others = prev.filter((s) => s.position !== pos)
+      const newSlots: LineupSlot[] = Array.from({ length: clamped }, (_, i) => ({
+        id: generateId(),
+        position: pos,
+        label: clamped === 1 && pos !== "FLEX" && pos !== "SUPERFLEX"
+          ? pos
+          : `${pos === "SUPERFLEX" ? "SFLEX" : pos}${i + 1}`,
+      }))
+      // Maintain position order
+      const combined = [...others, ...newSlots]
+      combined.sort((a, b) => {
+        return POSITION_ORDER.indexOf(a.position) - POSITION_ORDER.indexOf(b.position)
+      })
+      return combined
+    })
   }
 
-  function handleCategoryChange(index: number, id: string) {
-    setSelectedCategoryIds((prev) =>
-      prev.map((c, i) => (i === index ? id : c))
-    )
+  // Fetch random categories for each draft
+  const fetchRandomCategories = useCallback(async (): Promise<string[]> => {
+    const ids: string[] = []
+    for (let i = 0; i < numberOfDrafts; i++) {
+      try {
+        const exclude = ids.length > 0 ? `?exclude=${ids.join(",")}` : ""
+        const res = await fetch(`/api/games/trivia-draft/random-category${exclude}`)
+        if (res.ok) {
+          const data = await res.json()
+          ids.push(data.id)
+        }
+      } catch {
+        // silent
+      }
+    }
+    return ids
+  }, [numberOfDrafts])
+
+  // Navigation
+  const stepIndex = STEPS.findIndex((s) => s.id === step)
+
+  const canAdvance = (() => {
+    if (step === "players") {
+      return players.every((p) => p.name.trim().length > 0) && playerCount >= 2
+    }
+    if (step === "lineup") {
+      return lineupSlots.length > 0
+    }
+    return true
+  })()
+
+  function goNext() {
+    if (stepIndex < STEPS.length - 1) {
+      setStep(STEPS[stepIndex + 1].id)
+    }
   }
 
-  function randomizeCategories() {
-    if (categories.length === 0) return
-    const shuffled = [...categories].sort(() => Math.random() - 0.5)
-    setSelectedCategoryIds((prev) =>
-      prev.map((_, i) => shuffled[i % shuffled.length]?.id || "")
-    )
+  function goBack() {
+    if (stepIndex > 0) {
+      setStep(STEPS[stepIndex - 1].id)
+    }
   }
 
-  const isValid =
-    players.every((p) => p.name.trim().length > 0) &&
-    lineupSlots.length > 0 &&
-    selectedCategoryIds.every((id) => id !== "") &&
-    categories.length > 0
+  async function handleStart() {
+    const categoryIds = await fetchRandomCategories()
+    if (categoryIds.length === 0) return
 
-  function handleStart() {
     const settings: TriviaDraftSettings = {
       players: players.map((p) => ({ ...p, name: p.name.trim() })),
       numberOfDrafts,
@@ -169,303 +210,328 @@ export function GameSetup({ onStart }: GameSetupProps) {
       invalidPickPenalty,
       scoringFormat,
     }
-    onStart(settings, selectedCategoryIds, penaltyPoints)
+    onStart(settings, categoryIds, penaltyPoints)
   }
 
+  const isLastStep = stepIndex === STEPS.length - 1
+
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
-      {/* Players Section */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="size-5 text-primary" />
-          <h2 className="text-lg font-bold">Players</h2>
-        </div>
-        <div className="flex items-center gap-3 mb-4">
-          <Label className="text-sm font-medium text-muted-foreground shrink-0">
-            Number of Players
-          </Label>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-8"
-              onClick={() => handlePlayerCountChange(playerCount - 1)}
-              disabled={playerCount <= 1}
-            >
-              <Minus className="size-3.5" />
-            </Button>
-            <span className="w-8 text-center font-mono font-bold text-lg">
-              {playerCount}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-8"
-              onClick={() => handlePlayerCountChange(playerCount + 1)}
-              disabled={playerCount >= 10}
-            >
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {players.map((player, i) => (
-            <div key={player.id} className="flex items-center gap-3">
-              <div
-                className="size-3 shrink-0"
-                style={{ backgroundColor: player.color }}
-              />
-              <span className="text-sm font-mono text-muted-foreground w-6 shrink-0">
-                {i + 1}.
-              </span>
-              <Input
-                value={player.name}
-                onChange={(e) => handlePlayerNameChange(i, e.target.value)}
-                placeholder={`Player ${i + 1} name`}
-                autoComplete="off"
-                className="max-w-xs"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Lineup Section */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Settings2 className="size-5 text-primary" />
-          <h2 className="text-lg font-bold">Lineup</h2>
-        </div>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {lineupSlots.map((slot) => (
-            <div
-              key={slot.id}
-              className="flex items-center gap-1.5 px-3 py-1.5 border bg-muted/30 text-sm font-medium"
-            >
-              <span>{slot.label}</span>
+    <div className="max-w-2xl mx-auto">
+      {/* Step Indicators */}
+      <div className="flex items-center gap-1 mb-8">
+        {STEPS.map((s, i) => {
+          const Icon = s.icon
+          const isActive = s.id === step
+          const isPast = i < stepIndex
+          return (
+            <div key={s.id} className="flex items-center gap-1 flex-1">
               <button
-                onClick={() => removeSlot(slot.id)}
-                className="text-muted-foreground hover:text-destructive transition-colors"
+                onClick={() => {
+                  if (isPast) setStep(s.id)
+                }}
+                disabled={!isPast && !isActive}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors flex-1 justify-center border-b-2",
+                  isActive && "border-primary text-primary",
+                  isPast && "border-primary/40 text-primary/60 cursor-pointer hover:text-primary",
+                  !isActive && !isPast && "border-border text-muted-foreground"
+                )}
               >
-                <X className="size-3.5" />
+                <Icon className="size-4" />
+                <span className="hidden sm:inline">{s.label}</span>
               </button>
             </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {(["QB", "RB", "WR", "TE", "FLEX"] as SlotPosition[]).map((pos) => (
-            <Button
-              key={pos}
-              variant="outline"
-              size="sm"
-              onClick={() => addSlot(pos)}
-              className="text-xs"
-            >
-              <Plus className="size-3 mr-1" />
-              {pos}
-            </Button>
-          ))}
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <Switch
-            checked={hasSuperFlex}
-            onCheckedChange={setHasSuperFlex}
-            id="superflex"
-          />
-          <Label htmlFor="superflex" className="text-sm">
-            Superflex
-          </Label>
-        </div>
-        <p className="text-xs text-muted-foreground mt-1 ml-12">
-          {lineupSlots.length} rounds per draft
-        </p>
-      </section>
+          )
+        })}
+      </div>
 
-      <Separator />
+      {/* Step Content */}
+      <div className="min-h-[400px]">
+        {step === "players" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold mb-1">How many players?</h2>
+              <p className="text-sm text-muted-foreground">2-10 players take turns drafting.</p>
+            </div>
 
-      {/* Draft Settings */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Trophy className="size-5 text-primary" />
-          <h2 className="text-lg font-bold">Draft Settings</h2>
-        </div>
-
-        <div className="space-y-4">
-          {/* Number of Drafts */}
-          <div className="flex items-center gap-3">
-            <Label className="text-sm font-medium text-muted-foreground shrink-0 w-40">
-              Number of Drafts
-            </Label>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-3">
               <Button
                 variant="outline"
                 size="icon"
-                className="size-8"
-                onClick={() => handleDraftCountChange(numberOfDrafts - 1)}
-                disabled={numberOfDrafts <= 1}
+                className="size-10"
+                onClick={() => handlePlayerCountChange(playerCount - 1)}
+                disabled={playerCount <= 2}
               >
-                <Minus className="size-3.5" />
+                <Minus className="size-4" />
               </Button>
-              <span className="w-8 text-center font-mono font-bold text-lg">
-                {numberOfDrafts}
+              <span className="w-12 text-center font-mono font-bold text-3xl">
+                {playerCount}
               </span>
               <Button
                 variant="outline"
                 size="icon"
-                className="size-8"
-                onClick={() => handleDraftCountChange(numberOfDrafts + 1)}
-                disabled={numberOfDrafts >= 10}
+                className="size-10"
+                onClick={() => handlePlayerCountChange(playerCount + 1)}
+                disabled={playerCount >= 10}
               >
-                <Plus className="size-3.5" />
+                <Plus className="size-4" />
               </Button>
             </div>
-          </div>
 
-          {/* One Position at a Time */}
-          <div className="flex items-center gap-3">
-            <Label className="text-sm font-medium text-muted-foreground shrink-0 w-40">
-              One Position at a Time
-            </Label>
-            <Switch
-              checked={onePositionAtATime}
-              onCheckedChange={setOnePositionAtATime}
-            />
-          </div>
+            <Separator />
 
-          {/* Scoring Format */}
-          <div className="flex items-center gap-3">
-            <Label className="text-sm font-medium text-muted-foreground shrink-0 w-40">
-              Scoring
-            </Label>
-            <Select
-              value={scoringFormat}
-              onValueChange={(v) => setScoringFormat(v as "PPR" | "Half" | "STD")}
-            >
-              <SelectTrigger className="w-28 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PPR">PPR</SelectItem>
-                <SelectItem value="Half">Half PPR</SelectItem>
-                <SelectItem value="STD">Standard</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              {players.map((player, i) => (
+                <div key={player.id} className="flex items-center gap-3">
+                  <div
+                    className="size-4 shrink-0 border"
+                    style={{ backgroundColor: player.color }}
+                  />
+                  <Input
+                    value={player.name}
+                    onChange={(e) => handlePlayerNameChange(i, e.target.value)}
+                    placeholder={`Player ${i + 1}`}
+                    autoComplete="off"
+                    className="max-w-xs h-10"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Invalid Pick Penalty */}
-          <div className="flex items-center gap-3">
-            <Label className="text-sm font-medium text-muted-foreground shrink-0 w-40">
-              Invalid Pick Penalty
-            </Label>
-            <Select
-              value={invalidPickPenalty}
-              onValueChange={(v) => setInvalidPickPenalty(v as InvalidPickPenalty)}
-            >
-              <SelectTrigger className="w-40 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="points">Point Penalty</SelectItem>
-                <SelectItem value="none">No Penalty</SelectItem>
-                <SelectItem value="skip">Turn Skipped</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        {step === "lineup" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold mb-1">Set your lineup</h2>
+              <p className="text-sm text-muted-foreground">
+                Configure how many of each position to draft. {lineupSlots.length} rounds total.
+              </p>
+            </div>
 
-          {invalidPickPenalty === "points" && (
-            <div className="flex items-center gap-3 ml-[172px]">
-              <Label className="text-sm text-muted-foreground shrink-0">
-                Penalty Amount
+            <div className="space-y-3">
+              {(["QB", "RB", "WR", "TE", "FLEX"] as SlotPosition[]).map((pos) => {
+                const count = getPositionCount(pos)
+                return (
+                  <div key={pos} className="flex items-center justify-between py-2 border-b border-border/50">
+                    <div>
+                      <span className="font-bold text-sm">{pos}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {pos === "FLEX" && "(RB/WR/TE)"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => setPositionCount(pos, count - 1)}
+                        disabled={count <= 0}
+                      >
+                        <Minus className="size-3" />
+                      </Button>
+                      <span className="w-6 text-center font-mono font-bold text-lg">
+                        {count}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => setPositionCount(pos, count + 1)}
+                        disabled={count >= 6}
+                      >
+                        <Plus className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="font-bold text-sm">Superflex</span>
+                <span className="text-xs text-muted-foreground ml-2">(QB/RB/WR/TE)</span>
+              </div>
+              <Switch
+                checked={hasSuperFlex}
+                onCheckedChange={setHasSuperFlex}
+              />
+            </div>
+
+            <Separator />
+
+            {/* Preview */}
+            <div>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
+                Draft Order Preview
               </Label>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-mono text-destructive">-</span>
-                <Input
-                  type="number"
-                  value={penaltyPoints}
-                  onChange={(e) =>
-                    setPenaltyPoints(Math.max(0, parseInt(e.target.value) || 0))
-                  }
-                  autoComplete="off"
-                  className="w-20 h-9 font-mono"
-                />
-                <span className="text-sm text-muted-foreground">pts</span>
+              <div className="flex flex-wrap gap-1.5">
+                {lineupSlots.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Add at least one position to continue.</p>
+                ) : (
+                  lineupSlots.map((slot, i) => (
+                    <div
+                      key={slot.id}
+                      className="flex items-center gap-1 px-2.5 py-1 border bg-muted/30 text-xs font-mono font-medium"
+                    >
+                      <span className="text-muted-foreground">{i + 1}.</span>
+                      <span>{slot.label}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-          )}
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Categories */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">Categories</h2>
-          {numberOfDrafts > 1 && categories.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={randomizeCategories}
-              className="text-xs"
-            >
-              <Shuffle className="size-3 mr-1" />
-              Randomize
-            </Button>
-          )}
-        </div>
-        {loadingCategories ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
           </div>
-        ) : categories.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No categories available. An admin needs to create trivia categories first.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {selectedCategoryIds.map((catId, i) => (
-              <div key={i} className="flex items-center gap-3">
-                {numberOfDrafts > 1 && (
-                  <span className="text-sm font-mono text-muted-foreground w-12 shrink-0">
-                    Draft {i + 1}
+        )}
+
+        {step === "settings" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold mb-1">Game settings</h2>
+              <p className="text-sm text-muted-foreground">Configure draft rules and scoring.</p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Number of Drafts */}
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <div>
+                  <Label className="text-sm font-medium">Number of Drafts</Label>
+                  <p className="text-xs text-muted-foreground">Players can&apos;t repeat across drafts</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setNumberOfDrafts(Math.max(1, numberOfDrafts - 1))}
+                    disabled={numberOfDrafts <= 1}
+                  >
+                    <Minus className="size-3" />
+                  </Button>
+                  <span className="w-6 text-center font-mono font-bold text-lg">
+                    {numberOfDrafts}
                   </span>
-                )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setNumberOfDrafts(Math.min(10, numberOfDrafts + 1))}
+                    disabled={numberOfDrafts >= 10}
+                  >
+                    <Plus className="size-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* One Position at a Time */}
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <div>
+                  <Label className="text-sm font-medium">One Position at a Time</Label>
+                  <p className="text-xs text-muted-foreground">All players draft the same position each round</p>
+                </div>
+                <Switch
+                  checked={onePositionAtATime}
+                  onCheckedChange={setOnePositionAtATime}
+                />
+              </div>
+
+              {/* Scoring */}
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <Label className="text-sm font-medium">Scoring Format</Label>
                 <Select
-                  value={catId}
-                  onValueChange={(v) => handleCategoryChange(i, v)}
+                  value={scoringFormat}
+                  onValueChange={(v) => setScoringFormat(v as "PPR" | "Half" | "STD")}
                 >
-                  <SelectTrigger className="h-9 flex-1">
-                    <SelectValue placeholder="Select a category..." />
+                  <SelectTrigger className="w-28 h-9">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="PPR">PPR</SelectItem>
+                    <SelectItem value="Half">Half PPR</SelectItem>
+                    <SelectItem value="STD">Standard</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            ))}
+
+              {/* Invalid Pick Penalty */}
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <div>
+                  <Label className="text-sm font-medium">Invalid Pick Penalty</Label>
+                  <p className="text-xs text-muted-foreground">What happens when a pick doesn&apos;t fit the category</p>
+                </div>
+                <Select
+                  value={invalidPickPenalty}
+                  onValueChange={(v) => setInvalidPickPenalty(v as InvalidPickPenalty)}
+                >
+                  <SelectTrigger className="w-36 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="points">Point Penalty</SelectItem>
+                    <SelectItem value="none">No Penalty</SelectItem>
+                    <SelectItem value="skip">Turn Skipped</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {invalidPickPenalty === "points" && (
+                <div className="flex items-center gap-2 pl-4">
+                  <span className="text-sm font-mono text-destructive">-</span>
+                  <Input
+                    type="number"
+                    value={penaltyPoints}
+                    onChange={(e) =>
+                      setPenaltyPoints(Math.max(0, parseInt(e.target.value) || 0))
+                    }
+                    autoComplete="off"
+                    className="w-20 h-9 font-mono"
+                  />
+                  <span className="text-sm text-muted-foreground">pts per invalid pick</span>
+                </div>
+              )}
+            </div>
+
+            {!loadingCategories && !hasCategories && (
+              <div className="border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                No categories available. An admin needs to create and publish trivia categories before you can play.
+              </div>
+            )}
           </div>
         )}
-      </section>
+      </div>
 
-      <Separator />
-
-      {/* Start Button */}
-      <div className="flex justify-center pb-8">
+      {/* Navigation */}
+      <div className="flex items-center justify-between mt-8 pt-4 border-t">
         <Button
-          onClick={handleStart}
-          disabled={!isValid}
-          className="btn-chamfer h-12 px-8 text-lg font-bold tracking-wide"
+          variant="outline"
+          onClick={goBack}
+          disabled={stepIndex === 0}
+          className="gap-1"
         >
-          <Play className="size-5 mr-2" />
-          Start Draft
+          <ChevronLeft className="size-4" />
+          Back
         </Button>
+
+        {isLastStep ? (
+          <Button
+            onClick={handleStart}
+            disabled={!canAdvance || (!loadingCategories && !hasCategories)}
+            className="btn-chamfer h-11 px-8 text-base font-bold gap-2"
+          >
+            <Play className="size-4" />
+            Start Draft
+          </Button>
+        ) : (
+          <Button
+            onClick={goNext}
+            disabled={!canAdvance}
+            className="btn-chamfer gap-1"
+          >
+            Next
+            <ChevronRight className="size-4" />
+          </Button>
+        )}
       </div>
     </div>
   )
