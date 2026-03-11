@@ -118,18 +118,19 @@ export async function GET(req: NextRequest) {
   const sortDir = searchParams.get("sortDir") === "asc" ? "ASC" : "DESC"
   const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 200)
   const offset = parseInt(searchParams.get("offset") || "0")
+  const includeAllSeasons = searchParams.get("includeAllSeasons") === "true"
 
   try {
     const db = getDatabase()
 
     if (week) {
       return handleWeeklyQuery(db, {
-        search, position, team, season, week, sortBy, sortDir, limit, offset,
+        search, position, team, season, week, sortBy, sortDir, limit, offset, includeAllSeasons,
       })
     }
 
     return handleSeasonQuery(db, {
-      search, position, team, season, sortBy, sortDir, limit, offset,
+      search, position, team, season, sortBy, sortDir, limit, offset, includeAllSeasons,
     })
   } catch (error: unknown) {
     console.error("Player search error:", error)
@@ -217,6 +218,7 @@ function handleSeasonQuery(
   opts: {
     search: string; position: string; team: string; season: string
     sortBy: string; sortDir: string; limit: number; offset: number
+    includeAllSeasons: boolean
   }
 ) {
   const conditions: string[] = []
@@ -277,14 +279,22 @@ function handleSeasonQuery(
 
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[]
 
-  const seen = new Set<string>()
   const players = []
 
-  for (const row of rows) {
-    const key = (row.gsis_id as string) || `${row.full_name}-${row.position}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    players.push(mapSeasonRow(row))
+  if (opts.includeAllSeasons) {
+    // Include all seasons for each player
+    for (const row of rows) {
+      players.push(mapSeasonRow(row))
+    }
+  } else {
+    // Deduplicate by player
+    const seen = new Set<string>()
+    for (const row of rows) {
+      const key = (row.gsis_id as string) || `${row.full_name}-${row.position}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      players.push(mapSeasonRow(row))
+    }
   }
 
   const countQuery = `
