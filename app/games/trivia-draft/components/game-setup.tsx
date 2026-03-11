@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -66,7 +66,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
 
   // Lineup
   const [lineupSlots, setLineupSlots] = useState<LineupSlot[]>(DEFAULT_LINEUP_SLOTS)
-  const [hasSuperFlex, setHasSuperFlex] = useState(false)
 
   // Settings
   const [numberOfDrafts, setNumberOfDrafts] = useState(1)
@@ -74,27 +73,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
   const [invalidPickPenalty, setInvalidPickPenalty] = useState<InvalidPickPenalty>("points")
   const [penaltyPoints, setPenaltyPoints] = useState(25)
   const [scoringFormat, setScoringFormat] = useState<"PPR" | "Half" | "STD">("PPR")
-
-  // Categories loaded in background
-  const [hasCategories, setHasCategories] = useState(false)
-  const [loadingCategories, setLoadingCategories] = useState(true)
-
-  useEffect(() => {
-    async function checkCategories() {
-      try {
-        const res = await fetch("/api/games/trivia-categories")
-        if (res.ok) {
-          const data = await res.json()
-          setHasCategories((data.categories || []).length > 0)
-        }
-      } catch {
-        // silent fail
-      } finally {
-        setLoadingCategories(false)
-      }
-    }
-    checkCategories()
-  }, [])
 
   // Sync player count
   function handlePlayerCountChange(newCount: number) {
@@ -118,17 +96,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
       prev.map((p, i) => (i === index ? { ...p, name } : p))
     )
   }
-
-  // Superflex toggle
-  useEffect(() => {
-    setLineupSlots((prev) => {
-      const withoutSflex = prev.filter((s) => s.position !== "SUPERFLEX")
-      if (hasSuperFlex) {
-        return [...withoutSflex, { ...SUPERFLEX_SLOT, id: generateId() }]
-      }
-      return withoutSflex
-    })
-  }, [hasSuperFlex])
 
   // Lineup position helpers
   function getPositionCount(pos: SlotPosition) {
@@ -200,7 +167,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
 
   async function handleStart() {
     const categoryIds = await fetchRandomCategories()
-    if (categoryIds.length === 0) return
 
     const settings: TriviaDraftSettings = {
       players: players.map((p) => ({ ...p, name: p.name.trim() })),
@@ -310,14 +276,15 @@ export function GameSetup({ onStart }: GameSetupProps) {
             </div>
 
             <div className="space-y-3">
-              {(["QB", "RB", "WR", "TE", "FLEX"] as SlotPosition[]).map((pos) => {
+              {(["QB", "RB", "WR", "TE", "FLEX", "SUPERFLEX"] as SlotPosition[]).map((pos) => {
                 const count = getPositionCount(pos)
                 return (
                   <div key={pos} className="flex items-center justify-between py-2 border-b border-border/50">
                     <div>
-                      <span className="font-bold text-sm">{pos}</span>
+                      <span className="font-bold text-sm">{pos === "SUPERFLEX" ? "Superflex" : pos}</span>
                       <span className="text-xs text-muted-foreground ml-2">
                         {pos === "FLEX" && "(RB/WR/TE)"}
+                        {pos === "SUPERFLEX" && "(QB/RB/WR/TE)"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -346,41 +313,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
                   </div>
                 )
               })}
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <span className="font-bold text-sm">Superflex</span>
-                <span className="text-xs text-muted-foreground ml-2">(QB/RB/WR/TE)</span>
-              </div>
-              <Switch
-                checked={hasSuperFlex}
-                onCheckedChange={setHasSuperFlex}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Preview */}
-            <div>
-              <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                Draft Order Preview
-              </Label>
-              <div className="flex flex-wrap gap-1.5">
-                {lineupSlots.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Add at least one position to continue.</p>
-                ) : (
-                  lineupSlots.map((slot, i) => (
-                    <div
-                      key={slot.id}
-                      className="flex items-center gap-1 px-2.5 py-1 border bg-muted/30 text-xs font-mono font-medium"
-                    >
-                      <span className="text-muted-foreground">{i + 1}.</span>
-                      <span>{slot.label}</span>
-                    </div>
-                  ))
-                )}
-              </div>
             </div>
           </div>
         )}
@@ -491,12 +423,6 @@ export function GameSetup({ onStart }: GameSetupProps) {
                 </div>
               )}
             </div>
-
-            {!loadingCategories && !hasCategories && (
-              <div className="border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                No categories available. An admin needs to create and publish trivia categories before you can play.
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -516,7 +442,7 @@ export function GameSetup({ onStart }: GameSetupProps) {
         {isLastStep ? (
           <Button
             onClick={handleStart}
-            disabled={!canAdvance || (!loadingCategories && !hasCategories)}
+            disabled={!canAdvance}
             className="btn-chamfer h-11 px-8 text-base font-bold gap-2"
           >
             <Play className="size-4" />
