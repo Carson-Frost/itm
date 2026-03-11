@@ -68,6 +68,7 @@ export interface SleeperADP {
   position: string
   team: string
   headshot_url: string | null
+  sleeper_player_id: string | null
   adp_ppr: number
   adp_half_ppr: number
   adp_std: number

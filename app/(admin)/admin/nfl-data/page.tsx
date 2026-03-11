@@ -21,6 +21,7 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  Settings2,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -184,7 +185,15 @@ export default function NflDataPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">NFL Data</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">NFL Data</h1>
+        <Link href="/admin/nfl-data/manage">
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Settings2 className="h-3.5 w-3.5" />
+            Manage Data
+          </Button>
+        </Link>
+      </div>
 
       <Separator className="mb-6" />
 

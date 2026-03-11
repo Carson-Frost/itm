@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/connections", label: "Connections" },
+  { href: "/admin/trivia-categories", label: "Trivia Draft" },
   { href: "/admin/settings", label: "Settings" },
 ]
 

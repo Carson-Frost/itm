@@ -1,17 +1,21 @@
 import { getDatabase } from '@/lib/database/connection'
 import { SleeperADP } from '@/lib/types/ranking-schemas'
 
-// Ensure the sleeper_adp table has the headshot_url column
+// Ensure the sleeper_adp table has all expected columns
 function ensureSchema() {
   const db = getDatabase()
 
-  // Check if headshot_url column exists
   const tableInfo = db.prepare("PRAGMA table_info(sleeper_adp)").all() as Array<{ name: string }>
-  const hasHeadshotUrl = tableInfo.some(col => col.name === 'headshot_url')
+  if (tableInfo.length === 0) return // table doesn't exist yet, schema.sql will create it
 
-  if (!hasHeadshotUrl && tableInfo.length > 0) {
-    // Table exists but missing column - add it
+  const columnNames = new Set(tableInfo.map(col => col.name))
+
+  if (!columnNames.has('headshot_url')) {
     db.exec('ALTER TABLE sleeper_adp ADD COLUMN headshot_url TEXT')
+  }
+
+  if (!columnNames.has('sleeper_player_id')) {
+    db.exec('ALTER TABLE sleeper_adp ADD COLUMN sleeper_player_id TEXT')
   }
 }
 
@@ -57,10 +61,10 @@ export function upsertSleeperADP(data: SleeperADP[]): void {
   const sql = `
     INSERT OR REPLACE INTO sleeper_adp (
       id, season, player_id, player_name, position, team, headshot_url,
-      adp_ppr, adp_half_ppr, adp_std, updated_at
+      sleeper_player_id, adp_ppr, adp_half_ppr, adp_std, updated_at
     ) VALUES (
       @id, @season, @player_id, @player_name, @position, @team, @headshot_url,
-      @adp_ppr, @adp_half_ppr, @adp_std, @updated_at
+      @sleeper_player_id, @adp_ppr, @adp_half_ppr, @adp_std, @updated_at
     )
   `
 

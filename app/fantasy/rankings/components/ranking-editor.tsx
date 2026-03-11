@@ -819,6 +819,13 @@ export function RankingEditor({
     setSelectedPlayerIds(new Set())
   }, [removePlayerTarget, ranking.players, handlePlayersChangeWithHistory])
 
+  const handleDrawerRemovePlayer = useCallback((playerId: string) => {
+    const players = (ranking.players || [])
+      .filter((p) => p.playerId !== playerId)
+      .map((p, i) => ({ ...p, rank: i + 1 }))
+    handlePlayersChangeWithHistory(players)
+  }, [ranking.players, handlePlayersChangeWithHistory])
+
   const existingPlayerIds = useMemo(
     () => new Set((ranking.players || []).map((p) => p.playerId)),
     [ranking.players]
@@ -1336,6 +1343,7 @@ export function RankingEditor({
         positions={ranking.positions}
         scoring={ranking.scoring}
         onAddPlayer={handleAddPlayer}
+        onRemovePlayer={handleDrawerRemovePlayer}
       />
 
       <RemovePlayerDialog

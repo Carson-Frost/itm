@@ -320,6 +320,7 @@ CREATE TABLE IF NOT EXISTS sleeper_adp (
   position TEXT,
   team TEXT,
   headshot_url TEXT,
+  sleeper_player_id TEXT,
   adp_ppr REAL,
   adp_half_ppr REAL,
   adp_std REAL,

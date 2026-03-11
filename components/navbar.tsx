@@ -27,9 +27,21 @@ export function Navbar() {
         <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link href="/connections">Connections</Link>
-          </NavigationMenuLink>
+          <NavigationMenuTrigger onClick={(e) => {
+            if (e.currentTarget.getAttribute('data-state') === 'open') {
+              e.preventDefault()
+            }
+          }}>Games</NavigationMenuTrigger>
+          <NavigationMenuContent>
+            <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+              <ListItem href="/connections" title="Connections">
+                Match NFL players into hidden categories.
+              </ListItem>
+              <ListItem href="/games/trivia-draft" title="Trivia Draft">
+                Draft players against a hidden category and compete for points.
+              </ListItem>
+            </ul>
+          </NavigationMenuContent>
         </NavigationMenuItem>
 
         <NavigationMenuItem>
@@ -72,6 +84,9 @@ export function Navbar() {
               </ListItem>
               <ListItem href="/nfl/rankings/teams" title="Team Rankings">
                 NFL team rankings and organizational evaluations.
+              </ListItem>
+              <ListItem href="/nfl/rosters" title="Rosters">
+                View full team rosters, depth charts, and lineups.
               </ListItem>
               <ListItem href="/nfl/stats" title="Stats">
                 Comprehensive NFL player and team statistics.

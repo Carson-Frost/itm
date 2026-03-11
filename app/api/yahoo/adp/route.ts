@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getYahooADP, upsertYahooADP, isYahooADPStale, clearYahooADP } from '@/lib/data-access/yahoo-adp'
 import { YahooADP } from '@/lib/types/ranking-schemas'
 import { getValidAccessToken, isYahooConnected } from '@/lib/yahoo-auth'
-import { getDatabase } from '@/lib/database/connection'
+import { getCurrentSeason } from '@/lib/data-access/nfl-state'
+import { getLatestRosterSeason, getLocalPlayersByYahooID } from '@/lib/data-access/player-lookup'
 
 // Yahoo Fantasy API player shape (from JSON response)
 interface YahooPlayer {
@@ -22,58 +23,6 @@ interface YahooPlayer {
   average_draft_round?: string
   average_draft_cost?: string
   percent_drafted?: string
-}
-
-// Local player data from roster_data
-interface LocalPlayer {
-  gsis_id: string
-  yahoo_id: number
-  full_name: string
-  position: string
-  team: string
-  headshot_url: string | null
-}
-
-/**
- * Get the current fantasy season
- */
-function getCurrentSeason(): number {
-  return new Date().getFullYear()
-}
-
-/**
- * Get the most recent season from roster_data
- */
-function getLatestRosterSeason(): number {
-  const db = getDatabase()
-  const sql = 'SELECT MAX(season) as season FROM roster_data'
-  const stmt = db.prepare(sql)
-  const result = stmt.get() as { season: number } | undefined
-  return result?.season || new Date().getFullYear()
-}
-
-/**
- * Get all active players from roster_data that have a yahoo_id
- * Returns a map of yahoo_id -> player data
- */
-function getLocalPlayersMap(season: number): Map<string, LocalPlayer> {
-  const db = getDatabase()
-  const sql = `
-    SELECT gsis_id, yahoo_id, full_name, position, team, headshot_url
-    FROM roster_data
-    WHERE season = @season
-      AND yahoo_id IS NOT NULL
-      AND position IN ('QB', 'RB', 'WR', 'TE')
-      AND status = 'ACT'
-  `
-  const stmt = db.prepare(sql)
-  const results = stmt.all({ season }) as LocalPlayer[]
-
-  const map = new Map<string, LocalPlayer>()
-  for (const player of results) {
-    map.set(String(player.yahoo_id), player)
-  }
-  return map
 }
 
 /**
@@ -232,7 +181,7 @@ export async function GET(request: NextRequest) {
       const accessToken = await getValidAccessToken()
 
       // Get local players for matching
-      const localPlayers = getLocalPlayersMap(rosterSeason)
+      const localPlayers = getLocalPlayersByYahooID(rosterSeason)
 
       // Get Yahoo game key and fetch ADP
       const gameKey = await getNFLGameKey(accessToken)
@@ -249,11 +198,11 @@ export async function GET(request: NextRequest) {
         const localPlayer = localPlayers.get(yp.player_id)
 
         // Use local player data if matched, otherwise use Yahoo data
-        const playerName = localPlayer?.full_name || yp.name?.full || ''
+        const playerName = localPlayer?.name || yp.name?.full || ''
         const playerPosition = localPlayer?.position || yp.display_position || ''
         const playerTeam = localPlayer?.team || normalizeTeamAbbr(yp.editorial_team_abbr)
-        const playerId = localPlayer?.gsis_id || `yahoo_${yp.player_id}`
-        const headshotUrl = localPlayer?.headshot_url || yp.headshot?.url || null
+        const playerId = localPlayer?.gsisId || `yahoo_${yp.player_id}`
+        const headshotUrl = localPlayer?.headshotUrl || yp.headshot?.url || null
 
         // Only include fantasy-relevant positions
         if (!['QB', 'RB', 'WR', 'TE'].includes(playerPosition)) continue

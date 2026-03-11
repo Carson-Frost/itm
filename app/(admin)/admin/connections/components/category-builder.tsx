@@ -14,6 +14,7 @@ interface CategoryBuilderProps {
   existingPlayerIds: Set<string>
   missingName: boolean
   missingPlayers: number
+  isDuplicateDifficulty: boolean
 }
 
 export function CategoryBuilder({
@@ -22,6 +23,7 @@ export function CategoryBuilder({
   existingPlayerIds,
   missingName,
   missingPlayers,
+  isDuplicateDifficulty,
 }: CategoryBuilderProps) {
   const [isPlayerSearchOpen, setIsPlayerSearchOpen] = useState(false)
 
@@ -49,19 +51,16 @@ export function CategoryBuilder({
   const diffColor = DIFFICULTY_COLORS[category.difficulty]
 
   return (
-    <div className="border-3 border-border p-4">
-      <div className="flex flex-col gap-3">
-        {/* Category name + difficulty color badge + difficulty selector */}
-        <div className="flex gap-3 items-end">
-          <div className="flex-1">
+    <div className={`border-3 p-3 sm:p-4 transition-colors ${isDuplicateDifficulty ? "border-destructive/60 bg-destructive/5" : "border-border"}`}>
+      <div className="flex flex-col gap-2 sm:gap-3">
+        {/* Category name + difficulty selector */}
+        <div className="flex gap-2 sm:gap-3 items-end">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center mb-1">
               <label className="text-xs font-semibold text-muted-foreground">
                 CATEGORY NAME
               </label>
               {missingName && <span className="text-xs text-destructive ml-1.5">Required</span>}
-              <span className={`text-[10px] font-bold uppercase ${diffColor.bg} ${diffColor.text} px-1.5 py-0.5 leading-none ml-auto`}>
-                {diffColor.label}
-              </span>
             </div>
             <Input
               value={category.name}
@@ -71,10 +70,10 @@ export function CategoryBuilder({
             />
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground mb-1 block">
-              DIFFICULTY
-            </label>
+          <div className="shrink-0">
+            <span className={`text-[10px] font-bold uppercase ${diffColor.bg} ${diffColor.text} px-1.5 py-0.5 leading-none mb-1 inline-block`}>
+              {diffColor.label}
+            </span>
             <div className="flex gap-1">
               {([1, 2, 3, 4] as const).map((d) => {
                 const colors = DIFFICULTY_COLORS[d]
@@ -84,7 +83,7 @@ export function CategoryBuilder({
                     key={d}
                     onClick={() => handleDifficultyChange(d)}
                     className={`
-                      h-9 w-9 text-xs font-bold transition-all cursor-pointer
+                      h-8 w-8 sm:h-9 sm:w-9 text-xs font-bold transition-all cursor-pointer
                       ${isSelected
                         ? `${colors.bg} ${colors.text} ring-2 ring-foreground/20`
                         : "bg-muted text-muted-foreground hover:opacity-80"
@@ -100,12 +99,13 @@ export function CategoryBuilder({
           </div>
         </div>
 
-        {/* Player slots — match game tile appearance with ghost slots for empties */}
+        {/* Player slots */}
         <div>
-          <div className="flex items-center mb-2">
+          <div className="flex items-center mb-1.5">
             <label className="text-xs font-semibold text-muted-foreground">
               PLAYERS ({category.players.length}/4)
             </label>
+            {isDuplicateDifficulty && <span className="text-[10px] text-destructive ml-auto font-semibold">Duplicate difficulty</span>}
           </div>
           <div className="grid grid-cols-4 gap-1">
             {category.players.map((player, i) => (

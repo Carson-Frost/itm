@@ -55,7 +55,7 @@ const TABLE_DISPLAY_COLUMNS: Record<string, string[]> = {
   season_stats: ["player_display_name", "position", "recent_team", "season", "games", "passing_yards", "rushing_yards", "receiving_yards", "fantasy_points_ppr"],
   weekly_stats: ["player_display_name", "position", "team", "season", "week", "passing_yards", "rushing_yards", "receiving_yards", "fantasy_points_ppr"],
   schedule_data: ["season", "week", "game_type", "away_team", "away_score", "home_team", "home_score", "gameday"],
-  sleeper_adp: ["player_name", "position", "team", "season", "adp_ppr", "adp_half_ppr", "adp_std"],
+  sleeper_adp: ["player_name", "position", "team", "season", "sleeper_player_id", "adp_ppr", "adp_half_ppr", "adp_std"],
   yahoo_adp: ["player_name", "position", "team", "season", "adp", "adp_round", "percent_drafted"],
   metadata: ["key", "value"],
 }
@@ -176,13 +176,21 @@ export async function GET(req: NextRequest) {
     )
     .all(...params, PAGE_SIZE, offset)
 
-  // Last updated from metadata
+  // Last updated — for ADP tables, read MAX(updated_at) from the table itself;
+  // for other tables, read the global last_import_date from metadata
   let lastUpdated: string | null = null
   try {
-    const meta = db
-      .prepare("SELECT value FROM metadata WHERE key = 'last_import_date'")
-      .get() as { value: string } | undefined
-    lastUpdated = meta?.value ?? null
+    if (table === 'sleeper_adp' || table === 'yahoo_adp') {
+      const adpMeta = db
+        .prepare(`SELECT MAX(updated_at) as last_update FROM ${table}`)
+        .get() as { last_update: string | null } | undefined
+      lastUpdated = adpMeta?.last_update ?? null
+    } else {
+      const meta = db
+        .prepare("SELECT value FROM metadata WHERE key = 'last_import_date'")
+        .get() as { value: string } | undefined
+      lastUpdated = meta?.value ?? null
+    }
   } catch {
     // ignore
   }

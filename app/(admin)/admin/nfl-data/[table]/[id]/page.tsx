@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useEffect, use } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,17 +13,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Pencil, Check, Loader2 } from "lucide-react"
+import { Pencil } from "lucide-react"
 import { toast } from "sonner"
 
 // Logical field ordering per table — most relevant first, grouped by category
@@ -104,7 +93,7 @@ const FIELD_ORDER: Record<string, string[]> = {
   sleeper_adp: [
     "player_name", "player_id", "headshot_url",
     "position", "team", "season",
-    "adp_ppr", "adp_half_ppr", "adp_std",
+    "sleeper_player_id", "adp_ppr", "adp_half_ppr", "adp_std",
     "updated_at", "id",
   ],
   yahoo_adp: [
@@ -162,6 +151,7 @@ const FIELD_GROUPS: Record<string, Record<string, string>> = {
   sleeper_adp: {
     player_name: "Player",
     position: "Position & Team",
+    sleeper_player_id: "Sleeper Info",
     adp_ppr: "ADP Values",
     updated_at: "Metadata",
   },
@@ -253,14 +243,7 @@ export default function RecordDetailPage({
   const { table, id } = use(params)
   const decodedId = decodeURIComponent(id)
   const [row, setRow] = useState<Record<string, unknown> | null>(null)
-  const [editableFields, setEditableFields] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-
-  // Edit state
-  const [editField, setEditField] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState("")
-  const [confirmEdit, setConfirmEdit] = useState(false)
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     async function fetchRecord() {
@@ -271,7 +254,6 @@ export default function RecordDetailPage({
         if (res.ok) {
           const data = await res.json()
           setRow(data.row)
-          setEditableFields(data.editableFields)
         } else {
           toast.error("Record not found")
         }
@@ -285,55 +267,12 @@ export default function RecordDetailPage({
     fetchRecord()
   }, [table, decodedId])
 
-  const handleStartFieldEdit = (field: string) => {
-    setEditField(field)
-    setEditValue(String(row?.[field] ?? ""))
-  }
-
-  const handleConfirmSave = () => {
-    setConfirmEdit(true)
-  }
-
-  const handleSave = async () => {
-    if (!row || !editField) return
-    setSaving(true)
-
-    try {
-      const res = await fetch("/api/admin/nfl-data", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          table,
-          id: decodedId,
-          field: editField,
-          value: editValue,
-        }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || "Update failed")
-      }
-
-      const { row: updated } = await res.json()
-      setRow(updated)
-      setEditField(null)
-      setConfirmEdit(false)
-      toast.success(`${formatFieldLabel(editField)} updated. Change logged.`)
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Update failed"
-      toast.error(msg)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   // Order fields logically
   const orderedFields = row ? getOrderedFields(table, row) : []
   const groups = FIELD_GROUPS[table] || {}
   const title = row ? getRecordTitle(table, row) : "Loading..."
   const subtitle = row ? getRecordSubtitle(table, row) : null
-  const tableLabel = TABLES[table] || table
+  const tableLabel = TABLE_LABELS[table] || table
 
   return (
     <div>
@@ -365,7 +304,15 @@ export default function RecordDetailPage({
         <p className="text-muted-foreground">Record not found</p>
       ) : (
         <>
-          <h1 className="text-2xl font-bold mb-0.5">{title}</h1>
+          <div className="flex items-center justify-between mb-0.5">
+            <h1 className="text-2xl font-bold">{title}</h1>
+            <Link href="/admin/nfl-data/manage">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            </Link>
+          </div>
           {subtitle && (
             <p className="text-sm text-muted-foreground mb-6">{subtitle}</p>
           )}
@@ -383,12 +330,10 @@ export default function RecordDetailPage({
             </div>
           )}
 
-          {/* Field listing */}
+          {/* Field listing — read-only */}
           <div className="border-3 border-border">
             {orderedFields.map((field, i) => {
               const groupLabel = groups[field]
-              const isEditable = editableFields.includes(field)
-              const isEditing = editField === field
               const val = row[field]
 
               return (
@@ -402,113 +347,21 @@ export default function RecordDetailPage({
                     <span className="text-sm text-muted-foreground w-48 shrink-0 font-medium">
                       {formatFieldLabel(field)}
                     </span>
-
-                    {isEditing ? (
-                      <div className="flex-1 flex items-center gap-2">
-                        <Input
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="h-8 text-sm"
-                          autoComplete="off"
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          className="h-8 btn-chamfer text-primary-foreground"
-                          onClick={handleConfirmSave}
-                        >
-                          <Check className="h-3.5 w-3.5 mr-1" />
-                          Save
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => setEditField(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
-                        <span
-                          className={`text-sm break-all ${
-                            !isEditable ? "text-muted-foreground" : ""
-                          }`}
-                        >
-                          {formatCellValue(val)}
-                        </span>
-                        {isEditable && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 shrink-0"
-                            onClick={() => handleStartFieldEdit(field)}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                    <span className="text-sm break-all">
+                      {formatCellValue(val)}
+                    </span>
                   </div>
                 </div>
               )
             })}
           </div>
-
-          {editableFields.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Fields with a pencil icon can be edited. All changes are logged.
-            </p>
-          )}
         </>
       )}
-
-      {/* Confirmation Dialog */}
-      <AlertDialog open={confirmEdit} onOpenChange={setConfirmEdit}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Change</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are changing{" "}
-              <span className="font-semibold text-foreground">
-                {editField ? formatFieldLabel(editField) : ""}
-              </span>{" "}
-              from{" "}
-              <Badge variant="outline" className="mx-0.5 font-mono">
-                {String(row?.[editField ?? ""] ?? "null")}
-              </Badge>{" "}
-              to{" "}
-              <Badge variant="outline" className="mx-0.5 font-mono">
-                {editValue}
-              </Badge>
-              . This will be logged under your account.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleSave}
-              disabled={saving}
-              className="btn-chamfer text-primary-foreground"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                "Confirm Change"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
 
-const TABLES: Record<string, string> = {
+const TABLE_LABELS: Record<string, string> = {
   roster_data: "Roster Data",
   season_stats: "Season Stats",
   weekly_stats: "Weekly Stats",

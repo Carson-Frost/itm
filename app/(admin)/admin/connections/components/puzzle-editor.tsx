@@ -137,22 +137,24 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
 
   const isTitleMissing = !title.trim()
 
+  const duplicateDifficulties = useMemo(() => {
+    const seen = new Map<number, number>()
+    for (const cat of categories) {
+      seen.set(cat.difficulty, (seen.get(cat.difficulty) || 0) + 1)
+    }
+    return new Set([...seen.entries()].filter(([, count]) => count > 1).map(([d]) => d))
+  }, [categories])
+
   const puzzleErrors = useMemo(() => {
     const errors: string[] = []
-    const diffs = categories.map((c) => c.difficulty)
-    const seen = new Map<number, number>()
-    for (const d of diffs) {
-      seen.set(d, (seen.get(d) || 0) + 1)
-    }
-    const duplicated = [...seen.entries()].filter(([, count]) => count > 1).map(([d]) => d)
-    const missing = [1, 2, 3, 4].filter((d) => !seen.has(d))
-    if (duplicated.length > 0) {
-      const dupNames = duplicated.map((d) => DIFFICULTY_COLORS[d]?.label || `${d}`).join(", ")
+    if (duplicateDifficulties.size > 0) {
+      const dupNames = [...duplicateDifficulties].map((d) => DIFFICULTY_COLORS[d]?.label || `${d}`).join(", ")
+      const missing = [1, 2, 3, 4].filter((d) => !categories.some((c) => c.difficulty === d))
       const misNames = missing.map((d) => DIFFICULTY_COLORS[d]?.label || `${d}`).join(", ")
       errors.push(`Duplicate difficulty: ${dupNames}. Missing: ${misNames}`)
     }
     return errors
-  }, [categories])
+  }, [categories, duplicateDifficulties])
 
   const isValid =
     !isTitleMissing &&
@@ -344,7 +346,7 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
 
         <TooltipProvider delayDuration={200}>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Test button - only for existing puzzles */}
+            {/* Test — existing puzzles only */}
             {isExisting && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -353,9 +355,8 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const puzzleId = puzzle?.id
-                        if (puzzleId) {
-                          window.open(`/admin/connections/test?puzzleId=${puzzleId}`, "_blank", "noopener,noreferrer")
+                        if (puzzle?.id) {
+                          window.open(`/admin/connections/test?puzzleId=${puzzle.id}`, "_blank", "noopener,noreferrer")
                         }
                       }}
                     >
@@ -368,12 +369,14 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
               </Tooltip>
             )}
 
-            {/* New puzzle: Discard + Save Draft + Publish */}
-            {!isExisting && (
+            {/* Discard — always present */}
+            <Button variant="outline" size="sm" onClick={handleDiscard}>
+              {isExisting ? "Discard Changes" : "Discard"}
+            </Button>
+
+            {/* Save / Publish — branched on isDraft */}
+            {isDraft ? (
               <>
-                <Button variant="outline" size="sm" onClick={handleDiscard}>
-                  Discard
-                </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex">
@@ -419,164 +422,87 @@ export function PuzzleEditor({ puzzle, calendar }: PuzzleEditorProps) {
                   )}
                 </Tooltip>
               </>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      size="sm"
+                      className="btn-chamfer"
+                      onClick={() => handleSave("published")}
+                      disabled={saving || !isValid}
+                    >
+                      {saving ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-1" />
+                      )}
+                      Save Changes
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {validationTooltip && (
+                  <TooltipContent side="top" className="text-xs max-w-xs">
+                    {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
+                  </TooltipContent>
+                )}
+              </Tooltip>
             )}
 
-            {/* Editing draft: Discard Changes + Save Draft + Publish + Delete (icon-only) */}
-            {displayStatus === "Draft" && (
-              <>
-                <Button variant="outline" size="sm" onClick={handleDiscard}>
-                  Discard Changes
-                </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSave("draft")}
-                        disabled={saving || !isValid}
-                      >
-                        {saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                        ) : (
-                          <Save className="h-4 w-4 mr-1" />
-                        )}
-                        Save Draft
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {validationTooltip && (
-                    <TooltipContent side="top" className="text-xs max-w-xs">
-                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Button
-                        size="sm"
-                        className="btn-chamfer"
-                        onClick={() => setIsPublishOpen(true)}
-                        disabled={saving || !isValid}
-                      >
-                        <Send className="h-4 w-4 mr-1" />
-                        Publish
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {validationTooltip && (
-                    <TooltipContent side="top" className="text-xs max-w-xs">
-                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => setIsDeleteOpen(true)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Delete puzzle</TooltipContent>
-                </Tooltip>
-              </>
-            )}
-
-            {/* Editing published (Scheduled/Ready/Active/Archived): Discard Changes + Save Changes + Delete (icon-only) */}
-            {(displayStatus === "Scheduled" || displayStatus === "Ready" || displayStatus === "Active" || displayStatus === "Archived") && (
-              <>
-                <Button variant="outline" size="sm" onClick={handleDiscard}>
-                  Discard Changes
-                </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Button
-                        size="sm"
-                        className="btn-chamfer"
-                        onClick={() => handleSave("published")}
-                        disabled={saving || !isValid}
-                      >
-                        {saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                        ) : (
-                          <Save className="h-4 w-4 mr-1" />
-                        )}
-                        Save Changes
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {validationTooltip && (
-                    <TooltipContent side="top" className="text-xs max-w-xs">
-                      {validationTooltip.map((line, i) => <p key={i}>{line}</p>)}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => setIsDeleteOpen(true)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Delete puzzle</TooltipContent>
-                </Tooltip>
-              </>
+            {/* Delete — existing puzzles only */}
+            {isExisting && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => setIsDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Delete puzzle</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </TooltipProvider>
       </div>
 
-      {/* Puzzle-wide errors */}
-      {puzzleErrors.length > 0 && (
-        <div className="border-3 border-destructive/50 bg-destructive/5 px-4 py-3 text-sm text-destructive flex flex-col gap-1">
-          {puzzleErrors.map((err, i) => (
-            <p key={i}>{err}</p>
-          ))}
-        </div>
-      )}
-
       <Separator />
 
-      {/* Categories (left) + Board (right) - tabs on small, side-by-side on large */}
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6">
-        {/* Categories */}
-        <div>
-          {/* Mobile tabs */}
-          <div className="lg:hidden mb-4">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "categories" | "board")}>
-              <TabsList className="w-full">
-                <TabsTrigger value="categories" className="flex-1">Categories</TabsTrigger>
-                <TabsTrigger value="board" className="flex-1">Starting Board</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+      {/* Small-screen tabs (below md both sections stack via tabs) */}
+      <div className="md:hidden">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "categories" | "board")}>
+          <TabsList className="w-full">
+            <TabsTrigger value="categories" className="flex-1">Categories</TabsTrigger>
+            <TabsTrigger value="board" className="flex-1">Starting Board</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
-          <div className={`flex flex-col gap-4 ${activeTab === "board" ? "hidden lg:flex" : ""}`}>
-            {categories.map((cat, i) => (
-              <CategoryBuilder
-                key={i}
-                category={cat}
-                onChange={(updated) => handleCategoryChangeWithAutoPlace(i, updated)}
-                existingPlayerIds={existingPlayerIds}
-                missingName={categoryErrors[i].missingName}
-                missingPlayers={categoryErrors[i].missingPlayers}
-              />
-            ))}
-          </div>
+      {/* Categories + Board
+          xs/sm: tabbed (one at a time)
+          md: both visible, stacked vertically (categories 2x2, board below)
+          lg+: side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 lg:gap-6">
+        {/* Categories — 2-col grid on sm/md, single col on xs, single col on lg */}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 lg:gap-4 ${activeTab === "board" ? "hidden md:grid" : ""}`}>
+          {categories.map((cat, i) => (
+            <CategoryBuilder
+              key={i}
+              category={cat}
+              onChange={(updated) => handleCategoryChangeWithAutoPlace(i, updated)}
+              existingPlayerIds={existingPlayerIds}
+              missingName={categoryErrors[i].missingName}
+              missingPlayers={categoryErrors[i].missingPlayers}
+              isDuplicateDifficulty={duplicateDifficulties.has(cat.difficulty)}
+            />
+          ))}
         </div>
 
         {/* Board */}
-        <div className={`border-3 border-border p-4 ${activeTab === "categories" ? "hidden lg:block" : ""}`}>
+        <div className={`border-3 border-border p-4 ${activeTab === "categories" ? "hidden md:block" : ""}`}>
           <p className="text-xs font-semibold text-muted-foreground mb-3">STARTING BOARD</p>
           <BoardLayout
             categories={categories}

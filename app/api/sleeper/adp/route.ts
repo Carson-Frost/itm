@@ -1,7 +1,20 @@
+/**
+ * Sleeper ADP Route
+ *
+ * IMPORTANT: The projections endpoint used here is **undocumented**.
+ * - It lives at `api.sleeper.com` (NOT `api.sleeper.app`)
+ * - URL: https://api.sleeper.com/projections/nfl/{season}?season_type=regular
+ * - Response shape: Array of { player_id: string, stats: { adp_ppr?, adp_half_ppr?, adp_std? } }
+ * - `player_id` is Sleeper's internal player ID, mapped to our DB via `roster_data.sleeper_id`
+ * - This endpoint is NOT listed at docs.sleeper.app and may change without notice
+ * - The documented Sleeper API lives at `api.sleeper.app/v1/...`
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getSleeperADP, upsertSleeperADP, isADPStale, clearSleeperADP } from '@/lib/data-access/sleeper-adp'
 import { SleeperADP } from '@/lib/types/ranking-schemas'
-import { getDatabase } from '@/lib/database/connection'
+import { getCurrentSeason } from '@/lib/data-access/nfl-state'
+import { getLatestRosterSeason, getLocalPlayersBySleeperID } from '@/lib/data-access/player-lookup'
 
 // Sleeper API response shape for projections
 interface SleeperProjection {
@@ -13,60 +26,8 @@ interface SleeperProjection {
   }
 }
 
-// Local player data from roster_data
-interface LocalPlayer {
-  gsis_id: string
-  sleeper_id: number
-  full_name: string
-  position: string
-  team: string
-  headshot_url: string | null
-}
-
 /**
- * Get the current fantasy season (for ADP purposes, use current calendar year)
- */
-function getCurrentSeason(): number {
-  return new Date().getFullYear()
-}
-
-/**
- * Get the most recent season from roster_data for player lookup
- */
-function getLatestRosterSeason(): number {
-  const db = getDatabase()
-  const sql = 'SELECT MAX(season) as season FROM roster_data'
-  const stmt = db.prepare(sql)
-  const result = stmt.get() as { season: number } | undefined
-  return result?.season || new Date().getFullYear()
-}
-
-/**
- * Get all active players from roster_data that have a sleeper_id
- * Returns a map of sleeper_id -> player data
- */
-function getLocalPlayersMap(season: number): Map<string, LocalPlayer> {
-  const db = getDatabase()
-  const sql = `
-    SELECT gsis_id, sleeper_id, full_name, position, team, headshot_url
-    FROM roster_data
-    WHERE season = @season
-      AND sleeper_id IS NOT NULL
-      AND position IN ('QB', 'RB', 'WR', 'TE')
-      AND status = 'ACT'
-  `
-  const stmt = db.prepare(sql)
-  const results = stmt.all({ season }) as LocalPlayer[]
-
-  const map = new Map<string, LocalPlayer>()
-  for (const player of results) {
-    map.set(String(player.sleeper_id), player)
-  }
-  return map
-}
-
-/**
- * Fetch ADP projections from Sleeper
+ * Fetch ADP projections from Sleeper's undocumented projections endpoint
  */
 async function fetchSleeperProjections(season: number): Promise<SleeperProjection[]> {
   const response = await fetch(
@@ -96,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     if (stale || forceRefresh) {
       // Get local players from most recent roster data
-      const localPlayers = getLocalPlayersMap(rosterSeason)
+      const localPlayers = getLocalPlayersBySleeperID(rosterSeason)
 
       // Fetch ADP data from Sleeper
       const projections = await fetchSleeperProjections(season)
@@ -119,11 +80,12 @@ export async function GET(request: NextRequest) {
         adpData.push({
           id: `${season}_${proj.player_id}`,
           season,
-          player_id: localPlayer.gsis_id,
-          player_name: localPlayer.full_name,
+          player_id: localPlayer.gsisId,
+          player_name: localPlayer.name,
           position: localPlayer.position,
-          team: localPlayer.team || '',
-          headshot_url: localPlayer.headshot_url,
+          team: localPlayer.team,
+          headshot_url: localPlayer.headshotUrl,
+          sleeper_player_id: proj.player_id,
           adp_ppr: stats.adp_ppr || 999,
           adp_half_ppr: stats.adp_half_ppr || 999,
           adp_std: stats.adp_std || 999,

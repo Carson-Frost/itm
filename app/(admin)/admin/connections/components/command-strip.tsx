@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle } from "lucide-react"
 import type { ConnectionsPuzzle } from "@/lib/types/connections"
 import { DIFFICULTY_COLORS } from "@/lib/types/connections"
 import { StatusBadge, type PuzzleStatus } from "@/components/ui/status-badge"
@@ -75,10 +74,9 @@ function PuzzlePanel({
         </div>
         <div className="border-3 border-dashed border-destructive p-3 text-center">
           <div className="flex items-center justify-center gap-1.5 mb-1">
-            <AlertTriangle className="h-4 w-4 text-destructive" />
             <p className="text-sm font-bold text-destructive">NO PUZZLE SCHEDULED</p>
           </div>
-          <p className="text-[10px] text-muted-foreground">Players will see an error</p>
+          <p className="text-[10px] text-muted-foreground">Users will see an error</p>
         </div>
       </div>
     )

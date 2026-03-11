@@ -512,6 +512,7 @@ export function PlayerSearch({
           transition: isDragging ? "none" : "width 300ms cubic-bezier(0.32, 0.72, 0, 1)",
         }}
         aria-describedby={undefined}
+        showCloseButton
       >
         {/* Resize handle */}
         <div
@@ -538,20 +539,12 @@ export function PlayerSearch({
               title={isExpanded ? "Collapse panel" : "Expand for detailed stats"}
             >
               {isExpanded ? (
-                <ChevronsRight className="h-5 w-5" />
+                <ChevronsRight className="h-6 w-6" />
               ) : (
-                <ChevronsLeft className="h-5 w-5" />
+                <ChevronsLeft className="h-6 w-6" />
               )}
             </Button>
             <DrawerTitle className="text-lg font-bold flex-1">Add Player</DrawerTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
           </div>
         </DrawerHeader>
 
