@@ -1,0 +1,6 @@
+{
+  "$schema": "https://www.partykit.io/schema.json",
+  "name": "itm-codenames",
+  "main": "party/codenames.ts",
+  "compatibilityDate": "2024-09-01"
+}

@@ -1,11 +1,13 @@
 // ---- Card types on the board ----
-export type CardAssignment = "red" | "blue" | "neutral" | "assassin"
+export type CardAssignment = "red" | "blue" | "neutral" | "assassin" | "green"
+export type GameMode = "classic" | "duet"
 export type TeamColor = "red" | "blue"
 export type PlayerRole = "spymaster" | "operative"
 export type CardContentType = "player" | "team" | "college" | "coach"
 
 // ---- Lobby settings ----
 export interface CodenamesSettings {
+  gameMode: GameMode
   includePlayers: boolean
   includeTeams: boolean
   includeCollegeTeams: boolean
@@ -14,6 +16,7 @@ export interface CodenamesSettings {
 }
 
 export const DEFAULT_SETTINGS: CodenamesSettings = {
+  gameMode: "classic",
   includePlayers: true,
   includeTeams: true,
   includeCollegeTeams: false,
@@ -35,7 +38,7 @@ export interface CodenamesCard {
   name: string
   imageUrl: string | null
   contentType: CardContentType
-  subtitle: string | null // e.g. team abbr, position
+  subtitle: string | null // e.g. "QB - KC"
   assignment: CardAssignment
   isRevealed: boolean
   revealedBy: TeamColor | null
@@ -67,8 +70,15 @@ export interface CodenamesGameState {
   redTotal: number
   blueTotal: number
   winner: TeamColor | null
-  winReason: "all-found" | "assassin" | null
+  winReason: "all-found" | "assassin" | "tokens-depleted" | null
   turnHistory: TurnEntry[]
+  // Duet mode fields
+  gameMode: GameMode
+  duetTokensRemaining?: number
+  duetGreenFound?: number
+  duetGreenTotal?: number
+  duetAssignmentsA?: CardAssignment[]
+  duetAssignmentsB?: CardAssignment[]
 }
 
 // ---- Full lobby document ----
@@ -101,7 +111,7 @@ export interface WordPoolItem {
   subtitle: string | null
 }
 
-// ---- Player colors ----
+// ---- Team colors ----
 export const TEAM_COLORS = {
   red: {
     bg: "bg-red-600",

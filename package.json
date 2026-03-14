@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:partykit": "npx partykit dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -43,6 +44,8 @@
     "motion": "^12.34.0",
     "next": "^16.1.6",
     "next-themes": "^0.4.6",
+    "partykit": "^0.0.115",
+    "partysocket": "^1.1.16",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",

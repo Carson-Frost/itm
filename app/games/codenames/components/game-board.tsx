@@ -1,10 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,23 +13,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { toast } from "sonner"
 import {
   Eye,
-  EyeOff,
   Send,
   SkipForward,
   Trophy,
   Skull,
   RotateCcw,
+  LogOut,
+  Coins,
 } from "lucide-react"
 import { GameCard } from "./game-card"
 import type {
   CodenamesLobby,
-  CodenamesGameState,
   CodenamesClue,
   LobbyPlayer,
-  TeamColor,
 } from "@/lib/types/codenames"
 import { TEAM_COLORS } from "@/lib/types/codenames"
 import { cn } from "@/lib/utils"
@@ -39,251 +35,219 @@ import { cn } from "@/lib/utils"
 interface GameBoardProps {
   lobby: CodenamesLobby
   playerId: string
-  onRefresh: () => void
+  send: (msg: object) => void
+  onLeave: () => void
 }
 
-export function GameBoard({ lobby, playerId, onRefresh }: GameBoardProps) {
-  const gameState = lobby.gameState!
+export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
+  const gs = lobby.gameState!
+  const isDuet = gs.gameMode === "duet"
   const player = lobby.players.find((p) => p.id === playerId)
   const isSpymaster = player?.role === "spymaster"
-  const isMyTeamTurn = player?.team === gameState.currentTeam
-  const isCluePhase = !gameState.currentClue && !gameState.winner
-  const isGuessPhase = !!gameState.currentClue && !gameState.winner
+  const isMyTeamTurn = player?.team === gs.currentTeam
+  const isCluePhase = !gs.currentClue && !gs.winner
+  const isGuessPhase = !!gs.currentClue && !gs.winner
 
-  // Clue input state
   const [clueWord, setClueWord] = useState("")
   const [clueNumber, setClueNumber] = useState(1)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmGuess, setConfirmGuess] = useState<string | null>(null)
 
-  // Auto-poll for updates
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
-
-  useEffect(() => {
-    pollRef.current = setInterval(() => {
-      onRefresh()
-    }, 2000)
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+  const handleGiveClue = useCallback(() => {
+    if (!clueWord.trim() || !player) return
+    if (!isDuet && (!isSpymaster || !isMyTeamTurn)) return
+    if (isDuet && !isMyTeamTurn) return
+    const clue: CodenamesClue = {
+      word: clueWord.trim().toUpperCase(),
+      number: clueNumber,
+      team: player.team,
+      spymasterName: player.name,
     }
-  }, [onRefresh])
+    send({ type: "give-clue", clue })
+    setClueWord("")
+    setClueNumber(1)
+  }, [clueWord, clueNumber, isSpymaster, isMyTeamTurn, player, send, isDuet])
 
-  const handleGiveClue = useCallback(async () => {
-    if (!clueWord.trim() || !isSpymaster || !isMyTeamTurn) return
-    setIsSubmitting(true)
-    try {
-      const clue: CodenamesClue = {
-        word: clueWord.trim().toUpperCase(),
-        number: clueNumber,
-        team: player!.team,
-        spymasterName: player!.name,
-      }
-      const res = await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "give-clue", clue }),
-      })
-      if (!res.ok) throw new Error("Failed to give clue")
-      setClueWord("")
-      setClueNumber(1)
-      onRefresh()
-    } catch {
-      toast.error("Failed to give clue")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [clueWord, clueNumber, isSpymaster, isMyTeamTurn, player, lobby.code, onRefresh])
+  const handleGuess = useCallback((cardId: string) => {
+    send({ type: "guess", cardId, playerId })
+    setConfirmGuess(null)
+  }, [playerId, send])
 
-  const handleGuess = useCallback(async (cardId: string) => {
-    setIsSubmitting(true)
-    try {
-      const res = await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "guess", cardId, playerId }),
-      })
-      if (!res.ok) throw new Error("Failed to guess")
-      onRefresh()
-    } catch {
-      toast.error("Failed to submit guess")
-    } finally {
-      setIsSubmitting(false)
-      setConfirmGuess(null)
-    }
-  }, [lobby.code, playerId, onRefresh])
+  const handleEndTurn = useCallback(() => {
+    send({ type: "end-turn" })
+  }, [send])
 
-  const handleEndTurn = useCallback(async () => {
-    try {
-      await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "end-turn" }),
-      })
-      onRefresh()
-    } catch {
-      toast.error("Failed to end turn")
-    }
-  }, [lobby.code, onRefresh])
+  const handlePlayAgain = useCallback(() => {
+    send({ type: "play-again" })
+  }, [send])
 
-  const handlePlayAgain = useCallback(async () => {
-    try {
-      await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "play-again" }),
-      })
-      onRefresh()
-    } catch {
-      toast.error("Failed to restart")
-    }
-  }, [lobby.code, onRefresh])
-
-  const currentTeamColors = TEAM_COLORS[gameState.currentTeam]
   const redPlayers = lobby.players.filter((p) => p.team === "red")
   const bluePlayers = lobby.players.filter((p) => p.team === "blue")
 
   const cardToConfirm = confirmGuess
-    ? gameState.cards.find((c) => c.id === confirmGuess)
+    ? gs.cards.find((c) => c.id === confirmGuess)
     : null
 
+  // --- Determine what the bottom bar shows ---
+  const canGiveClue = isDuet
+    ? isMyTeamTurn && isCluePhase
+    : isSpymaster && isMyTeamTurn && isCluePhase
+  const canEndTurn = isGuessPhase && (isDuet ? !isMyTeamTurn : isMyTeamTurn && !isSpymaster)
+  const canGuessCards = isGuessPhase && (isDuet ? !isMyTeamTurn : isMyTeamTurn && !isSpymaster)
+
+  // Status text
+  const getStatusText = () => {
+    if (gs.winner) {
+      if (isDuet) {
+        return gs.winReason === "all-found" ? "You Win!" : "Game Over"
+      }
+      return `${gs.winner === "red" ? "Red" : "Blue"} Wins${gs.winReason === "assassin" ? " (Assassin)" : ""}`
+    }
+    if (isDuet) {
+      const giverName = lobby.players.find((p) => p.team === gs.currentTeam)?.name ?? "?"
+      if (isCluePhase) return `${giverName} — Giving Clue`
+      return `Guessing (${gs.guessesRemaining} left)`
+    }
+    const teamLabel = gs.currentTeam === "red" ? "Red" : "Blue"
+    if (isCluePhase) return `${teamLabel} — Giving Clue`
+    return `${teamLabel} — Guessing (${gs.guessesRemaining} left)`
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Score header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="size-3 bg-red-500" />
-            <span className="font-bold text-sm tabular-nums">
-              {gameState.redFound}/{gameState.redTotal}
-            </span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {redPlayers.map((p) => p.name).join(", ")}
-            </span>
-          </div>
-        </div>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col overflow-hidden">
+      {/* ===== STATUS BAR ===== */}
+      <div className={cn(
+        "flex items-center justify-between px-3 sm:px-4 py-2 border-b-2 shrink-0",
+        gs.winner
+          ? isDuet
+            ? gs.winReason === "all-found" ? "border-emerald-500 bg-emerald-600/10" : "border-foreground bg-foreground/5"
+            : TEAM_COLORS[gs.winner].border + " " + TEAM_COLORS[gs.winner].bgMuted
+          : TEAM_COLORS[gs.currentTeam].border + " " + TEAM_COLORS[gs.currentTeam].bgMuted,
+      )}>
+        <button
+          onClick={onLeave}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <LogOut className="size-3.5" />
+          <span className="hidden sm:inline">Leave</span>
+        </button>
 
-        {/* Turn indicator */}
-        <div className={cn(
-          "px-3 py-1.5 border-2 text-xs font-bold uppercase tracking-wider",
-          gameState.winner
-            ? TEAM_COLORS[gameState.winner].border + " " + TEAM_COLORS[gameState.winner].text
-            : currentTeamColors.border + " " + currentTeamColors.text,
-        )}>
-          {gameState.winner ? (
+        <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+          {gs.winner ? (
             <span className="flex items-center gap-1.5">
-              <Trophy className="size-3.5" />
-              {gameState.winner === "red" ? "Red" : "Blue"} Wins
-              {gameState.winReason === "assassin" && " (Assassin)"}
+              {gs.winReason === "assassin" || gs.winReason === "tokens-depleted" ? (
+                <Skull className="size-4" />
+              ) : (
+                <Trophy className="size-4" />
+              )}
+              {getStatusText()}
             </span>
-          ) : isCluePhase ? (
-            `${gameState.currentTeam === "red" ? "Red" : "Blue"} — Giving Clue`
           ) : (
-            `${gameState.currentTeam === "red" ? "Red" : "Blue"} — Guessing (${gameState.guessesRemaining} left)`
+            getStatusText()
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Current clue display */}
+        {gs.currentClue && !gs.winner ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {bluePlayers.map((p) => p.name).join(", ")}
+            <span className="text-xs text-muted-foreground uppercase tracking-wider hidden sm:inline">Clue:</span>
+            <span className="font-bold text-sm tracking-wide font-mono">
+              {gs.currentClue.word}
             </span>
-            <span className="font-bold text-sm tabular-nums">
-              {gameState.blueFound}/{gameState.blueTotal}
+            <span className={cn(
+              "font-bold font-mono text-sm",
+              !isDuet && TEAM_COLORS[gs.currentClue.team].text,
+              isDuet && "text-emerald-500",
+            )}>
+              {gs.currentClue.number}
             </span>
-            <div className="size-3 bg-blue-500" />
+          </div>
+        ) : (
+          <div className="w-16" /> // spacer for alignment
+        )}
+      </div>
+
+      {/* ===== MAIN CONTENT: sidebar | grid | sidebar ===== */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Left sidebar (Red / Player A) */}
+        <TeamSidebar
+          team="red"
+          label={isDuet ? "Player A" : "Red"}
+          players={redPlayers}
+          found={isDuet ? (gs.duetGreenFound ?? 0) : gs.redFound}
+          total={isDuet ? (gs.duetGreenTotal ?? 15) : gs.redTotal}
+          isActive={gs.currentTeam === "red" && !gs.winner}
+          isDuet={isDuet}
+          playerId={playerId}
+          duetTokens={isDuet ? gs.duetTokensRemaining : undefined}
+        />
+
+        {/* Center: Card grid */}
+        <div className="flex-1 flex items-center justify-center p-2 sm:p-3 min-w-0">
+          <div className="grid grid-cols-5 grid-rows-5 gap-1 sm:gap-1.5 w-full h-full max-h-full"
+            style={{ aspectRatio: "1 / 1", maxWidth: "calc(100vh - 10rem)" }}
+          >
+            {gs.cards.map((card) => (
+              <GameCard
+                key={card.id}
+                card={card}
+                isSpymaster={!!isSpymaster}
+                isMyTurn={isMyTeamTurn}
+                canGuess={canGuessCards}
+                gameMode={gs.gameMode}
+                onClick={() => {
+                  if (!card.isRevealed && canGuessCards) {
+                    setConfirmGuess(card.id)
+                  }
+                }}
+              />
+            ))}
           </div>
         </div>
+
+        {/* Right sidebar (Blue / Player B) */}
+        <TeamSidebar
+          team="blue"
+          label={isDuet ? "Player B" : "Blue"}
+          players={bluePlayers}
+          found={isDuet ? (gs.duetGreenFound ?? 0) : gs.blueFound}
+          total={isDuet ? (gs.duetGreenTotal ?? 15) : gs.blueTotal}
+          isActive={gs.currentTeam === "blue" && !gs.winner}
+          isDuet={isDuet}
+          playerId={playerId}
+          duetTokens={isDuet ? gs.duetTokensRemaining : undefined}
+        />
       </div>
 
-      {/* Current clue display */}
-      {gameState.currentClue && !gameState.winner && (
-        <div className={cn(
-          "flex items-center justify-center gap-3 py-2 border-2",
-          TEAM_COLORS[gameState.currentClue.team].border,
-          TEAM_COLORS[gameState.currentClue.team].bgMuted,
-        )}>
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Clue:</span>
-          <span className="font-bold text-lg tracking-wide font-mono">
-            {gameState.currentClue.word}
-          </span>
-          <span className={cn(
-            "text-lg font-bold font-mono",
-            TEAM_COLORS[gameState.currentClue.team].text,
-          )}>
-            {gameState.currentClue.number}
-          </span>
-        </div>
-      )}
-
-      {/* Role indicator */}
-      {player && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            {isSpymaster ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-            <span className="font-medium">
-              {player.name} — {player.team === "red" ? "Red" : "Blue"} {isSpymaster ? "Spymaster" : "Operative"}
-            </span>
-          </span>
-          {isGuessPhase && isMyTeamTurn && !isSpymaster && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs gap-1"
-              onClick={handleEndTurn}
-            >
-              <SkipForward className="size-3" />
-              End Turn
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* 5x5 Card Grid */}
-      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-        {gameState.cards.map((card) => (
-          <GameCard
-            key={card.id}
-            card={card}
-            isSpymaster={!!isSpymaster}
-            isMyTurn={isMyTeamTurn}
-            canGuess={isGuessPhase && !isSubmitting}
-            onClick={() => setConfirmGuess(card.id)}
-          />
-        ))}
-      </div>
-
-      {/* Spymaster clue input */}
-      {isSpymaster && isMyTeamTurn && isCluePhase && !gameState.winner && (
-        <>
-          <Separator />
-          <div className="flex items-center gap-3 max-w-lg mx-auto w-full">
+      {/* ===== BOTTOM BAR ===== */}
+      <div className="shrink-0 border-t border-border px-3 sm:px-4 py-2 flex items-center justify-center gap-3">
+        {/* Spymaster clue input (or duet clue-giver) */}
+        {canGiveClue && !gs.winner && (
+          <div className="flex items-center gap-2 w-full max-w-lg">
             <Input
               value={clueWord}
               onChange={(e) => setClueWord(e.target.value.replace(/\s/g, ""))}
               placeholder="One-word clue..."
               autoComplete="off"
-              className="flex-1 h-11 font-mono uppercase tracking-wider text-center"
+              className="flex-1 h-10 font-mono uppercase tracking-wider text-center"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && clueWord.trim()) handleGiveClue()
               }}
             />
-            <div className="flex items-center gap-1 border-3 border-border">
+            <div className="flex items-center gap-0.5 border-2 border-border">
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-9"
+                className="size-8"
                 onClick={() => setClueNumber(Math.max(0, clueNumber - 1))}
                 disabled={clueNumber <= 0}
               >
                 -
               </Button>
-              <span className="w-8 text-center font-mono font-bold text-lg">
-                {clueNumber}
-              </span>
+              <span className="w-6 text-center font-mono font-bold">{clueNumber}</span>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-9"
+                className="size-8"
                 onClick={() => setClueNumber(Math.min(9, clueNumber + 1))}
               >
                 +
@@ -291,58 +255,75 @@ export function GameBoard({ lobby, playerId, onRefresh }: GameBoardProps) {
             </div>
             <Button
               onClick={handleGiveClue}
-              disabled={!clueWord.trim() || isSubmitting}
-              className="btn-chamfer h-11 px-6 gap-2"
+              disabled={!clueWord.trim()}
+              className="btn-chamfer h-10 px-4 gap-1.5"
             >
-              <Send className="size-4" />
+              <Send className="size-3.5" />
               Give Clue
             </Button>
           </div>
-        </>
-      )}
+        )}
 
-      {/* Waiting messages */}
-      {isSpymaster && !isMyTeamTurn && !gameState.winner && (
-        <p className="text-center text-sm text-muted-foreground py-2">
-          Waiting for the other team...
-        </p>
-      )}
-      {!isSpymaster && isMyTeamTurn && isCluePhase && !gameState.winner && (
-        <p className="text-center text-sm text-muted-foreground py-2">
-          Waiting for your spymaster to give a clue...
-        </p>
-      )}
-      {!isMyTeamTurn && !isSpymaster && !gameState.winner && (
-        <p className="text-center text-sm text-muted-foreground py-2">
-          Waiting for the other team...
-        </p>
-      )}
-
-      {/* Game over */}
-      {gameState.winner && (
-        <div className="flex flex-col items-center gap-4 py-4">
-          <div className={cn(
-            "flex items-center gap-3 text-2xl font-bold",
-            TEAM_COLORS[gameState.winner].text,
-          )}>
-            {gameState.winReason === "assassin" ? (
-              <Skull className="size-7" />
-            ) : (
-              <Trophy className="size-7" />
-            )}
-            {gameState.winner === "red" ? "Red" : "Blue"} Team Wins!
-          </div>
-          {gameState.winReason === "assassin" && (
-            <p className="text-sm text-muted-foreground">
-              The {gameState.winner === "red" ? "blue" : "red"} team hit the assassin!
-            </p>
-          )}
-          <Button onClick={handlePlayAgain} className="btn-chamfer h-11 px-8 gap-2">
-            <RotateCcw className="size-4" />
-            Play Again
+        {/* End turn button */}
+        {canEndTurn && !gs.winner && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleEndTurn}
+          >
+            <SkipForward className="size-3.5" />
+            End Turn
           </Button>
-        </div>
-      )}
+        )}
+
+        {/* Waiting messages */}
+        {!canGiveClue && !canEndTurn && !gs.winner && (
+          <p className="text-xs text-muted-foreground py-1">
+            {isDuet
+              ? isMyTeamTurn
+                ? "Give a clue for your partner..."
+                : "Waiting for your partner's clue..."
+              : isSpymaster && !isMyTeamTurn
+                ? "Waiting for the other team..."
+                : !isSpymaster && isMyTeamTurn && isCluePhase
+                  ? "Waiting for your spymaster..."
+                  : !isMyTeamTurn
+                    ? "Waiting for the other team..."
+                    : null}
+          </p>
+        )}
+
+        {/* Game over controls */}
+        {gs.winner && (
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "flex items-center gap-2 font-bold",
+              isDuet
+                ? gs.winReason === "all-found" ? "text-emerald-500" : "text-foreground"
+                : TEAM_COLORS[gs.winner].text,
+            )}>
+              {gs.winReason === "assassin" || gs.winReason === "tokens-depleted" ? (
+                <Skull className="size-5" />
+              ) : (
+                <Trophy className="size-5" />
+              )}
+              {isDuet
+                ? gs.winReason === "all-found"
+                  ? "All agents found!"
+                  : gs.winReason === "tokens-depleted"
+                    ? "Out of tokens!"
+                    : "Hit an assassin!"
+                : `${gs.winner === "red" ? "Red" : "Blue"} Team Wins!`
+              }
+            </div>
+            <Button onClick={handlePlayAgain} className="btn-chamfer h-9 px-6 gap-1.5">
+              <RotateCcw className="size-3.5" />
+              Play Again
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Confirm guess dialog */}
       <AlertDialog open={!!confirmGuess} onOpenChange={() => setConfirmGuess(null)}>
@@ -358,7 +339,6 @@ export function GameBoard({ lobby, playerId, onRefresh }: GameBoardProps) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => confirmGuess && handleGuess(confirmGuess)}
-              disabled={isSubmitting}
               className="btn-chamfer"
             >
               Confirm
@@ -367,5 +347,127 @@ export function GameBoard({ lobby, playerId, onRefresh }: GameBoardProps) {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+// ---- Team Sidebar ----
+
+function TeamSidebar({
+  team,
+  label,
+  players,
+  found,
+  total,
+  isActive,
+  isDuet,
+  playerId,
+  duetTokens,
+}: {
+  team: "red" | "blue"
+  label: string
+  players: LobbyPlayer[]
+  found: number
+  total: number
+  isActive: boolean
+  isDuet: boolean
+  playerId: string
+  duetTokens?: number
+}) {
+  const colors = TEAM_COLORS[team]
+  const spymasters = players.filter((p) => p.role === "spymaster")
+  const operatives = players.filter((p) => p.role === "operative")
+
+  return (
+    <div className={cn(
+      "hidden lg:flex flex-col w-[170px] shrink-0 border-border overflow-y-auto",
+      team === "red" ? "border-r" : "border-l",
+      isActive ? colors.bgMuted : "bg-muted/5",
+    )}>
+      {/* Team header */}
+      <div className={cn(
+        "px-3 py-3 border-b border-border/50",
+        isActive && colors.bg + " text-white",
+        !isActive && "bg-transparent",
+      )}>
+        <p className={cn(
+          "text-xs font-bold uppercase tracking-widest",
+          !isActive && colors.text,
+        )}>
+          {label}
+        </p>
+      </div>
+
+      {/* Score */}
+      <div className="px-3 py-3 border-b border-border/50">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+          {isDuet ? "Green Found" : "Found"}
+        </p>
+        <p className={cn("text-2xl font-bold tabular-nums", isDuet ? "text-emerald-500" : colors.text)}>
+          {found}<span className="text-muted-foreground text-lg">/{total}</span>
+        </p>
+        {isDuet && duetTokens !== undefined && (
+          <div className="flex items-center gap-1.5 mt-2">
+            <Coins className="size-3 text-amber-500" />
+            <span className="text-xs text-muted-foreground">
+              {duetTokens} token{duetTokens !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Player list */}
+      <div className="flex-1 px-3 py-3 space-y-3">
+        {isDuet ? (
+          // Duet: just list players
+          <div className="space-y-1.5">
+            {players.map((p) => (
+              <PlayerName key={p.id} name={p.name} isMe={p.id === playerId} />
+            ))}
+          </div>
+        ) : (
+          // Classic: group by role
+          <>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                <Eye className="size-3" /> Spymaster
+              </p>
+              <div className="space-y-1">
+                {spymasters.map((p) => (
+                  <PlayerName key={p.id} name={p.name} isMe={p.id === playerId} />
+                ))}
+                {spymasters.length === 0 && (
+                  <p className="text-[10px] text-muted-foreground/50 italic">—</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5">
+                Operatives
+              </p>
+              <div className="space-y-1">
+                {operatives.map((p) => (
+                  <PlayerName key={p.id} name={p.name} isMe={p.id === playerId} />
+                ))}
+                {operatives.length === 0 && (
+                  <p className="text-[10px] text-muted-foreground/50 italic">—</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PlayerName({ name, isMe }: { name: string; isMe: boolean }) {
+  return (
+    <p className={cn(
+      "text-xs truncate",
+      isMe ? "text-primary font-bold" : "text-foreground/80",
+    )}>
+      {name}
+      {isMe && <span className="text-[9px] text-primary/70 ml-1">(you)</span>}
+    </p>
   )
 }

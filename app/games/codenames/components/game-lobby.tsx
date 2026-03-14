@@ -1,77 +1,44 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import {
   Copy,
   Check,
-  Users,
-  Play,
-  Crown,
   Eye,
   Crosshair,
   Loader2,
-  ChevronRight,
-  ChevronLeft,
-  Settings2,
   Gamepad2,
+  Crown,
+  LogOut,
+  Users,
 } from "lucide-react"
 import type {
   CodenamesLobby,
   CodenamesSettings,
-  LobbyPlayer,
   TeamColor,
   PlayerRole,
+  GameMode,
 } from "@/lib/types/codenames"
-import { TEAM_COLORS, DEFAULT_SETTINGS } from "@/lib/types/codenames"
+import { TEAM_COLORS } from "@/lib/types/codenames"
 import { cn } from "@/lib/utils"
 
 interface GameLobbyProps {
   lobby: CodenamesLobby
   playerId: string
-  onRefresh: () => void
-  onGameStart: () => void
+  send: (msg: object) => void
+  onLeave: () => void
 }
 
-const STEPS = [
-  { id: "teams", label: "Teams", icon: Users },
-  { id: "settings", label: "Settings", icon: Settings2 },
-] as const
-
-type StepId = (typeof STEPS)[number]["id"]
-
-export function GameLobby({ lobby, playerId, onRefresh, onGameStart }: GameLobbyProps) {
-  const [step, setStep] = useState<StepId>("teams")
+export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
   const [copied, setCopied] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
-  const [settings, setSettings] = useState<CodenamesSettings>(lobby.settings)
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
 
   const isHost = lobby.hostId === playerId
-  const player = lobby.players.find((p) => p.id === playerId)
-
-  // Poll for updates
-  useEffect(() => {
-    pollRef.current = setInterval(() => {
-      onRefresh()
-    }, 2000)
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [onRefresh])
-
-  // Detect game start
-  useEffect(() => {
-    if (lobby.status === "playing") {
-      onGameStart()
-    }
-  }, [lobby.status, onGameStart])
+  const isDuet = lobby.settings.gameMode === "duet"
 
   const copyCode = useCallback(() => {
     navigator.clipboard.writeText(lobby.code)
@@ -80,41 +47,28 @@ export function GameLobby({ lobby, playerId, onRefresh, onGameStart }: GameLobby
     setTimeout(() => setCopied(false), 2000)
   }, [lobby.code])
 
-  const updatePlayer = useCallback(async (targetId: string, team?: TeamColor, role?: PlayerRole) => {
-    try {
-      await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update-player", playerId: targetId, team, role }),
-      })
-      onRefresh()
-    } catch {
-      toast.error("Failed to update player")
-    }
-  }, [lobby.code, onRefresh])
+  const updateSettings = useCallback(
+    (settings: CodenamesSettings) => {
+      send({ type: "update-settings", settings })
+    },
+    [send]
+  )
 
-  const updateSettings = useCallback(async (newSettings: CodenamesSettings) => {
-    setSettings(newSettings)
-    try {
-      await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update-settings", settings: newSettings }),
-      })
-    } catch {
-      // silent
-    }
-  }, [lobby.code])
+  const joinSlot = useCallback(
+    (team: TeamColor, role: PlayerRole) => {
+      send({ type: "update-player", playerId, team, role })
+    },
+    [send, playerId]
+  )
 
   const handleStart = useCallback(async () => {
     setIsStarting(true)
     try {
-      // Fetch word pool
       const params = new URLSearchParams()
-      params.set("players", settings.includePlayers.toString())
-      params.set("teams", settings.includeTeams.toString())
-      params.set("colleges", settings.includeCollegeTeams.toString())
-      params.set("coaches", settings.includeCoaches.toString())
+      params.set("players", lobby.settings.includePlayers.toString())
+      params.set("teams", lobby.settings.includeTeams.toString())
+      params.set("colleges", lobby.settings.includeCollegeTeams.toString())
+      params.set("coaches", lobby.settings.includeCoaches.toString())
 
       const poolRes = await fetch(`/api/games/codenames/word-pool?${params}`)
       if (!poolRes.ok) throw new Error("Failed to fetch word pool")
@@ -126,269 +80,165 @@ export function GameLobby({ lobby, playerId, onRefresh, onGameStart }: GameLobby
         return
       }
 
-      const res = await fetch(`/api/games/codenames/lobbies/${lobby.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start", wordPool: pool }),
-      })
-      if (!res.ok) throw new Error("Failed to start game")
-      onRefresh()
+      send({ type: "start", wordPool: pool })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start game")
     } finally {
       setIsStarting(false)
     }
-  }, [lobby.code, settings, onRefresh])
-
-  const stepIndex = STEPS.findIndex((s) => s.id === step)
-  const isLastStep = stepIndex === STEPS.length - 1
+  }, [lobby.settings, send])
 
   const redPlayers = lobby.players.filter((p) => p.team === "red")
   const bluePlayers = lobby.players.filter((p) => p.team === "blue")
 
   // Validation
   const hasMinPlayers = lobby.players.length >= 2
+  const eachTeamHasPlayers = redPlayers.length > 0 && bluePlayers.length > 0
   const eachTeamHasSpymaster =
     redPlayers.some((p) => p.role === "spymaster") &&
     bluePlayers.some((p) => p.role === "spymaster")
-  const eachTeamHasPlayers = redPlayers.length > 0 && bluePlayers.length > 0
-  const canStart = hasMinPlayers && eachTeamHasSpymaster && eachTeamHasPlayers
+  const canStart = isDuet
+    ? hasMinPlayers && eachTeamHasPlayers
+    : hasMinPlayers && eachTeamHasSpymaster && eachTeamHasPlayers
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Lobby code */}
-      <div className="flex items-center justify-center gap-4 mb-6">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Lobby Code</p>
-          <button
-            onClick={copyCode}
-            className="flex items-center gap-2 px-4 py-2 border-3 border-primary bg-primary/5 hover:bg-primary/10 transition-colors"
-          >
-            <span className="font-mono font-bold text-2xl tracking-[0.3em] text-primary">
-              {lobby.code}
-            </span>
-            {copied ? (
-              <Check className="size-5 text-primary" />
-            ) : (
-              <Copy className="size-5 text-muted-foreground" />
-            )}
-          </button>
-        </div>
+    <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+      {/* Top bar: title + leave */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold underline">Codenames</h1>
+        <Button variant="outline" size="sm" onClick={onLeave} className="gap-1.5">
+          <LogOut className="size-3.5" />
+          Leave
+        </Button>
       </div>
 
-      {/* Step indicators */}
-      {isHost && (
-        <div className="flex items-center gap-1 mb-8">
-          {STEPS.map((s, i) => {
-            const Icon = s.icon
-            const isActive = s.id === step
-            const isPast = i < stepIndex
-            return (
-              <div key={s.id} className="flex items-center gap-1 flex-1">
-                <button
-                  onClick={() => { if (isPast) setStep(s.id) }}
-                  disabled={!isPast && !isActive}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors flex-1 justify-center border-b-2",
-                    isActive && "border-primary text-primary",
-                    isPast && "border-primary/40 text-primary/60 cursor-pointer hover:text-primary",
-                    !isActive && !isPast && "border-border text-muted-foreground",
-                  )}
-                >
-                  <Icon className="size-4" />
-                  <span className="hidden sm:inline">{s.label}</span>
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Step content */}
-      <div className="min-h-[350px]">
-        {step === "teams" && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold mb-1">Teams</h2>
-                <p className="text-sm text-muted-foreground">
-                  {lobby.players.length}/6 players &middot; Share the code to invite others
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Eye className="size-3.5" /> Spymaster
-                <span className="mx-1">&middot;</span>
-                <Crosshair className="size-3.5" /> Operative
-              </div>
-            </div>
-
-            {/* Red team */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="size-3 bg-red-500" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-red-500">Red Team</h3>
-              </div>
-              <div className="space-y-1">
-                {redPlayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-3 text-center border border-dashed border-border">
-                    No players yet
-                  </p>
-                ) : (
-                  redPlayers.map((p) => (
-                    <PlayerRow
-                      key={p.id}
-                      player={p}
-                      isMe={p.id === playerId}
-                      isHost={isHost}
-                      onToggleRole={() =>
-                        updatePlayer(p.id, undefined, p.role === "spymaster" ? "operative" : "spymaster")
-                      }
-                      onSwitchTeam={() => updatePlayer(p.id, "blue")}
-                      lobbyHostId={lobby.hostId}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Blue team */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="size-3 bg-blue-500" />
-                <h3 className="text-sm font-bold uppercase tracking-wider text-blue-500">Blue Team</h3>
-              </div>
-              <div className="space-y-1">
-                {bluePlayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-3 text-center border border-dashed border-border">
-                    No players yet
-                  </p>
-                ) : (
-                  bluePlayers.map((p) => (
-                    <PlayerRow
-                      key={p.id}
-                      player={p}
-                      isMe={p.id === playerId}
-                      isHost={isHost}
-                      onToggleRole={() =>
-                        updatePlayer(p.id, undefined, p.role === "spymaster" ? "operative" : "spymaster")
-                      }
-                      onSwitchTeam={() => updatePlayer(p.id, "red")}
-                      lobbyHostId={lobby.hostId}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-
-            {!canStart && isHost && (
-              <p className="text-xs text-destructive">
-                {!hasMinPlayers
-                  ? "Need at least 2 players"
-                  : !eachTeamHasPlayers
-                    ? "Each team needs at least 1 player"
-                    : "Each team needs a spymaster"}
-              </p>
-            )}
-          </div>
-        )}
-
-        {step === "settings" && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold mb-1">Game Settings</h2>
-              <p className="text-sm text-muted-foreground">Choose what appears on the board.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div>
-                  <Label className="text-sm font-medium">NFL Players</Label>
-                  <p className="text-xs text-muted-foreground">Current and recent NFL players with headshots</p>
-                </div>
-                <Switch
-                  checked={settings.includePlayers}
-                  onCheckedChange={(v) => updateSettings({ ...settings, includePlayers: v })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div>
-                  <Label className="text-sm font-medium">NFL Teams</Label>
-                  <p className="text-xs text-muted-foreground">All 32 NFL teams with logos</p>
-                </div>
-                <Switch
-                  checked={settings.includeTeams}
-                  onCheckedChange={(v) => updateSettings({ ...settings, includeTeams: v })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div>
-                  <Label className="text-sm font-medium">College Teams</Label>
-                  <p className="text-xs text-muted-foreground">Admin-curated college programs</p>
-                </div>
-                <Switch
-                  checked={settings.includeCollegeTeams}
-                  onCheckedChange={(v) => updateSettings({ ...settings, includeCollegeTeams: v })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div>
-                  <Label className="text-sm font-medium">Coaches</Label>
-                  <p className="text-xs text-muted-foreground">NFL and college coaches</p>
-                </div>
-                <Switch
-                  checked={settings.includeCoaches}
-                  onCheckedChange={(v) => updateSettings({ ...settings, includeCoaches: v })}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Navigation (host only) */}
-      {isHost && (
-        <div className="flex items-center justify-between mt-8 pt-4 border-t">
-          <Button
-            variant="outline"
-            onClick={() => setStep(STEPS[stepIndex - 1]?.id ?? "teams")}
-            disabled={stepIndex === 0}
-            className="gap-1"
-          >
-            <ChevronLeft className="size-4" />
-            Back
-          </Button>
-
-          {isLastStep ? (
-            <Button
-              onClick={handleStart}
-              disabled={!canStart || isStarting}
-              className="btn-chamfer h-11 px-8 text-base font-bold gap-2"
-            >
-              {isStarting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Gamepad2 className="size-4" />
-              )}
-              Start Game
-            </Button>
+      {/* Lobby code — large, copyable */}
+      <div className="flex items-center justify-center mb-8">
+        <button
+          onClick={copyCode}
+          className="flex items-center gap-3 px-6 py-3 border-3 border-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+        >
+          <span className="font-mono font-bold text-3xl sm:text-4xl tracking-[0.3em] text-primary">
+            {lobby.code}
+          </span>
+          {copied ? (
+            <Check className="size-6 text-primary" />
           ) : (
-            <Button
-              onClick={() => setStep(STEPS[stepIndex + 1].id)}
-              className="btn-chamfer gap-1"
-            >
-              Next
-              <ChevronRight className="size-4" />
-            </Button>
+            <Copy className="size-6 text-muted-foreground" />
           )}
+        </button>
+      </div>
+
+      {/* 3-column layout: Blue | Settings | Red */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 md:gap-6 mb-8">
+        {/* Red team column */}
+        <TeamColumn
+          team="red"
+          label={isDuet ? "Player A" : "Red Team"}
+          players={redPlayers}
+          playerId={playerId}
+          isDuet={isDuet}
+          lobbyHostId={lobby.hostId}
+          onJoin={joinSlot}
+        />
+
+        {/* Settings column (center) */}
+        <div className="w-full md:w-[260px] order-first md:order-none">
+          {/* Mode tabs */}
+          <div className="flex border-2 border-border mb-4">
+            <ModeTab
+              mode="classic"
+              isActive={!isDuet}
+              disabled={!isHost}
+              onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "classic" })}
+            />
+            <ModeTab
+              mode="duet"
+              isActive={isDuet}
+              disabled={!isHost}
+              onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "duet" })}
+            />
+          </div>
+
+          {/* Content toggles */}
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
+              Board Content
+            </p>
+            <SettingToggle
+              label="NFL Players"
+              checked={lobby.settings.includePlayers}
+              disabled={!isHost}
+              onChange={(v) => updateSettings({ ...lobby.settings, includePlayers: v })}
+            />
+            <SettingToggle
+              label="NFL Teams"
+              checked={lobby.settings.includeTeams}
+              disabled={!isHost}
+              onChange={(v) => updateSettings({ ...lobby.settings, includeTeams: v })}
+            />
+            <SettingToggle
+              label="Colleges"
+              checked={lobby.settings.includeCollegeTeams}
+              disabled={!isHost}
+              onChange={(v) => updateSettings({ ...lobby.settings, includeCollegeTeams: v })}
+            />
+            <SettingToggle
+              label="Coaches"
+              checked={lobby.settings.includeCoaches}
+              disabled={!isHost}
+              onChange={(v) => updateSettings({ ...lobby.settings, includeCoaches: v })}
+            />
+          </div>
+
+          {/* Player count */}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-4">
+            <Users className="size-3.5" />
+            {lobby.players.length}/6 players
+          </div>
         </div>
+
+        {/* Blue team column */}
+        <TeamColumn
+          team="blue"
+          label={isDuet ? "Player B" : "Blue Team"}
+          players={bluePlayers}
+          playerId={playerId}
+          isDuet={isDuet}
+          lobbyHostId={lobby.hostId}
+          onJoin={joinSlot}
+        />
+      </div>
+
+      {/* Validation message */}
+      {!canStart && isHost && (
+        <p className="text-xs text-destructive text-center mb-3">
+          {!hasMinPlayers
+            ? "Need at least 2 players"
+            : !eachTeamHasPlayers
+              ? "Each team needs at least 1 player"
+              : isDuet
+                ? "Each side needs a player"
+                : "Each team needs a spymaster"}
+        </p>
       )}
 
-      {/* Non-host waiting */}
-      {!isHost && (
-        <div className="text-center py-6 text-sm text-muted-foreground">
+      {/* Start button */}
+      {isHost ? (
+        <Button
+          onClick={handleStart}
+          disabled={!canStart || isStarting}
+          className="btn-chamfer w-full h-12 text-base font-bold gap-2"
+        >
+          {isStarting ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            <Gamepad2 className="size-5" />
+          )}
+          Start Game
+        </Button>
+      ) : (
+        <div className="text-center py-4 text-sm text-muted-foreground">
           Waiting for the host to start the game...
         </div>
       )}
@@ -396,75 +246,188 @@ export function GameLobby({ lobby, playerId, onRefresh, onGameStart }: GameLobby
   )
 }
 
-// ---- Player row in team list ----
-function PlayerRow({
-  player,
-  isMe,
-  isHost,
-  onToggleRole,
-  onSwitchTeam,
-  lobbyHostId,
+// ---- Mode tab ----
+
+function ModeTab({
+  mode,
+  isActive,
+  disabled,
+  onClick,
 }: {
-  player: LobbyPlayer
-  isMe: boolean
-  isHost: boolean
-  onToggleRole: () => void
-  onSwitchTeam: () => void
-  lobbyHostId: string
+  mode: GameMode
+  isActive: boolean
+  disabled: boolean
+  onClick: () => void
 }) {
-  const canEdit = isHost || isMe
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex-1 py-2 text-sm font-bold uppercase tracking-wider transition-colors",
+        isActive
+          ? "bg-primary text-primary-foreground"
+          : "bg-transparent text-muted-foreground hover:text-foreground",
+        disabled && !isActive && "cursor-not-allowed opacity-50",
+      )}
+    >
+      {mode === "classic" ? "Classic" : "Duet"}
+    </button>
+  )
+}
+
+// ---- Setting toggle ----
+
+function SettingToggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  disabled: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <Label className="text-sm">{label}</Label>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </div>
+  )
+}
+
+// ---- Team column ----
+
+function TeamColumn({
+  team,
+  label,
+  players,
+  playerId,
+  isDuet,
+  lobbyHostId,
+  onJoin,
+}: {
+  team: TeamColor
+  label: string
+  players: import("@/lib/types/codenames").LobbyPlayer[]
+  playerId: string
+  isDuet: boolean
+  lobbyHostId: string
+  onJoin: (team: TeamColor, role: PlayerRole) => void
+}) {
+  const colors = TEAM_COLORS[team]
+  const spymasters = players.filter((p) => p.role === "spymaster")
+  const operatives = players.filter((p) => p.role === "operative")
+  const meOnThisTeam = players.some((p) => p.id === playerId)
 
   return (
     <div className={cn(
-      "flex items-center gap-3 px-3 py-2.5 border-2 transition-colors",
-      isMe ? "border-primary/30 bg-primary/5" : "border-border/30",
+      "border-2 overflow-hidden",
+      colors.borderMuted,
     )}>
-      <span className="flex-1 text-sm font-medium flex items-center gap-2">
-        {player.name}
-        {player.id === lobbyHostId && (
-          <Crown className="size-3.5 text-amber-500" />
-        )}
-        {isMe && (
-          <span className="text-[10px] text-primary font-bold uppercase tracking-widest">(You)</span>
-        )}
-      </span>
+      {/* Team header */}
+      <div className={cn("px-3 py-2.5", colors.bgMuted)}>
+        <h3 className={cn("text-sm font-bold uppercase tracking-wider", colors.text)}>
+          {label}
+        </h3>
+      </div>
 
-      {canEdit && (
-        <>
-          <button
-            onClick={onToggleRole}
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 text-xs font-medium border transition-colors",
-              player.role === "spymaster"
-                ? "border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10"
-                : "border-border text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {player.role === "spymaster" ? (
-              <><Eye className="size-3" /> Spymaster</>
-            ) : (
-              <><Crosshair className="size-3" /> Operative</>
-            )}
-          </button>
-
-          <button
-            onClick={onSwitchTeam}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border"
-          >
-            Switch
-          </button>
-        </>
+      {isDuet ? (
+        // Duet: single slot per side
+        <div className="p-3">
+          <RoleBucket
+            label=""
+            players={players}
+            playerId={playerId}
+            lobbyHostId={lobbyHostId}
+            onJoin={() => onJoin(team, "operative")}
+            showJoin={!meOnThisTeam}
+          />
+        </div>
+      ) : (
+        // Classic: spymaster + operative buckets
+        <div className="p-3 space-y-3">
+          <RoleBucket
+            label="Spymaster"
+            icon={<Eye className="size-3" />}
+            players={spymasters}
+            playerId={playerId}
+            lobbyHostId={lobbyHostId}
+            onJoin={() => onJoin(team, "spymaster")}
+            showJoin={!spymasters.some((p) => p.id === playerId)}
+          />
+          <RoleBucket
+            label="Operatives"
+            icon={<Crosshair className="size-3" />}
+            players={operatives}
+            playerId={playerId}
+            lobbyHostId={lobbyHostId}
+            onJoin={() => onJoin(team, "operative")}
+            showJoin={!operatives.some((p) => p.id === playerId)}
+          />
+        </div>
       )}
+    </div>
+  )
+}
 
-      {!canEdit && (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          {player.role === "spymaster" ? (
-            <><Eye className="size-3" /> Spymaster</>
-          ) : (
-            <><Crosshair className="size-3" /> Operative</>
-          )}
-        </span>
+// ---- Role bucket ----
+
+function RoleBucket({
+  label,
+  icon,
+  players,
+  playerId,
+  lobbyHostId,
+  onJoin,
+  showJoin,
+}: {
+  label: string
+  icon?: React.ReactNode
+  players: import("@/lib/types/codenames").LobbyPlayer[]
+  playerId: string
+  lobbyHostId: string
+  onJoin: () => void
+  showJoin: boolean
+}) {
+  return (
+    <div>
+      {label && (
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1">
+          {icon} {label}
+        </p>
       )}
+      <div className="border border-dashed border-border/60 min-h-[40px] p-2 space-y-1.5">
+        {players.map((p) => (
+          <div key={p.id} className={cn(
+            "flex items-center gap-2 text-sm",
+            p.id === playerId && "text-primary font-bold",
+          )}>
+            <span className="truncate flex-1">{p.name}</span>
+            {p.id === lobbyHostId && <Crown className="size-3 text-amber-500 shrink-0" />}
+            {p.id === playerId && (
+              <span className="text-[9px] text-primary/70 uppercase tracking-widest shrink-0">(you)</span>
+            )}
+          </div>
+        ))}
+        {players.length === 0 && showJoin && (
+          <button
+            onClick={onJoin}
+            className="w-full py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors uppercase tracking-wider font-medium"
+          >
+            Join
+          </button>
+        )}
+        {players.length > 0 && showJoin && (
+          <button
+            onClick={onJoin}
+            className="w-full py-1 text-[10px] text-muted-foreground/60 hover:text-foreground hover:bg-muted/30 transition-colors uppercase tracking-wider"
+          >
+            Move here
+          </button>
+        )}
+      </div>
     </div>
   )
 }
