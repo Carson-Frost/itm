@@ -140,13 +140,13 @@ export const PLAYER_COLORS = [
 
 // ---- Default lineup ----
 export const DEFAULT_LINEUP_SLOTS: LineupSlot[] = [
-  { id: "qb1", position: "QB", label: "QB" },
+  { id: "qb1", position: "QB", label: "QB1" },
   { id: "rb1", position: "RB", label: "RB1" },
   { id: "rb2", position: "RB", label: "RB2" },
   { id: "wr1", position: "WR", label: "WR1" },
   { id: "wr2", position: "WR", label: "WR2" },
-  { id: "te1", position: "TE", label: "TE" },
-  { id: "flex1", position: "FLEX", label: "FLEX" },
+  { id: "te1", position: "TE", label: "TE1" },
+  { id: "flex1", position: "FLEX", label: "FLEX1" },
 ]
 
 export const SUPERFLEX_SLOT: LineupSlot = {

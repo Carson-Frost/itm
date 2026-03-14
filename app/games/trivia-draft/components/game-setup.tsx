@@ -109,9 +109,7 @@ export function GameSetup({ onStart }: GameSetupProps) {
       const newSlots: LineupSlot[] = Array.from({ length: clamped }, (_, i) => ({
         id: generateId(),
         position: pos,
-        label: clamped === 1 && pos !== "FLEX" && pos !== "SUPERFLEX"
-          ? pos
-          : `${pos === "SUPERFLEX" ? "SFLEX" : pos}${i + 1}`,
+        label: `${pos === "SUPERFLEX" ? "SF" : pos}${i + 1}`,
       }))
       // Maintain position order
       const combined = [...others, ...newSlots]

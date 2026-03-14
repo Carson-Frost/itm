@@ -38,38 +38,48 @@ export function getSeasonStats(filter: SeasonStatsFilter = {}): SeasonStats[] {
   const params: Record<string, unknown> = {}
 
   if (filter.season !== undefined) {
-    whereClauses.push('season = @season')
+    whereClauses.push('s.season = @season')
     params.season = filter.season
   }
 
   if (filter.position) {
-    whereClauses.push('position = @position')
+    whereClauses.push('s.position = @position')
     params.position = filter.position
   }
 
   if (filter.playerId) {
-    whereClauses.push('player_id = @playerId')
+    whereClauses.push('s.player_id = @playerId')
     params.playerId = filter.playerId
   }
 
   if (filter.playerName) {
-    whereClauses.push('player_display_name LIKE @playerName')
+    whereClauses.push('s.player_display_name LIKE @playerName')
     params.playerName = `%${filter.playerName}%`
   }
 
   if (filter.team) {
-    whereClauses.push('LOWER(recent_team) = LOWER(@team)')
+    whereClauses.push('LOWER(s.recent_team) = LOWER(@team)')
     params.team = filter.team
   }
 
   if (filter.minGames !== undefined) {
-    whereClauses.push('games >= @minGames')
+    whereClauses.push('s.games >= @minGames')
     params.minGames = filter.minGames
   }
 
   const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
 
-  const sql = `SELECT * FROM season_stats ${whereClause}`
+  // Join roster_data to get season-specific headshot URLs
+  const sql = `
+    SELECT s.*, COALESCE(rh.headshot_url, s.headshot_url) AS headshot_url
+    FROM season_stats s
+    LEFT JOIN (
+      SELECT gsis_id, season, headshot_url
+      FROM roster_data
+      GROUP BY gsis_id, season
+    ) rh ON s.player_id = rh.gsis_id AND s.season = rh.season
+    ${whereClause}
+  `
   const stmt = db.prepare(sql)
   const results = stmt.all(params) as SeasonStats[]
 

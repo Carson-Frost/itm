@@ -3,17 +3,19 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+/* select removed — season picker uses buttons */
+/* popover removed — using inline dropdown */
 import { PositionBadge } from "@/components/position-badge"
+import { TeamLogo } from "@/components/team-logo"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Eye, EyeOff, SkipForward, ChevronRight, Undo2, Search } from "lucide-react"
+import {
+  SkipForward,
+  ChevronRight,
+  Undo2,
+  Search,
+  Trophy,
+  Circle,
+} from "lucide-react"
 import {
   type TriviaDraftSettings,
   type DraftPick,
@@ -26,6 +28,10 @@ import {
 } from "@/lib/types/trivia-draft"
 import { cn } from "@/lib/utils"
 import { XButton } from "@/components/x-button"
+
+/* ────────────────────────────────────────────────────────────── */
+/*  Helpers                                                       */
+/* ────────────────────────────────────────────────────────────── */
 
 interface DraftBoardProps {
   session: GameSession
@@ -55,11 +61,15 @@ function getSlotForPick(
   }
 
   for (const slot of settings.lineupSlots) {
-    if (!filledSlotIds.has(slot.label)) {
-      return slot
-    }
+    if (!filledSlotIds.has(slot.label)) return slot
   }
   return null
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 interface SearchResult {
@@ -77,12 +87,32 @@ interface SelectedPlayerData {
   playerId: string
   position: string
   headshotUrl: string | null
-  availableSeasons: Array<{ season: number; fantasyPoints: number; team: string }>
+  availableSeasons: Array<{
+    season: number
+    fantasyPoints: number
+    team: string
+  }>
 }
+
+/* Position colors — bg for slot label, softer bg for row tint */
+const posColors: Record<string, { label: string; row: string; text: string }> = {
+  QB: { label: "bg-red-500/25 dark:bg-red-500/20", row: "bg-red-500/[.06] dark:bg-red-500/[.04]", text: "text-red-700 dark:text-red-300" },
+  RB: { label: "bg-emerald-500/25 dark:bg-emerald-500/20", row: "bg-emerald-500/[.06] dark:bg-emerald-500/[.04]", text: "text-emerald-700 dark:text-emerald-300" },
+  WR: { label: "bg-sky-500/25 dark:bg-sky-500/20", row: "bg-sky-500/[.06] dark:bg-sky-500/[.04]", text: "text-sky-700 dark:text-sky-300" },
+  TE: { label: "bg-orange-500/25 dark:bg-orange-500/20", row: "bg-orange-500/[.06] dark:bg-orange-500/[.04]", text: "text-orange-700 dark:text-orange-300" },
+  FLEX: { label: "bg-violet-500/25 dark:bg-violet-500/20", row: "bg-violet-500/[.06] dark:bg-violet-500/[.04]", text: "text-violet-700 dark:text-violet-300" },
+  SUPERFLEX: { label: "bg-amber-500/25 dark:bg-amber-500/20", row: "bg-amber-500/[.06] dark:bg-amber-500/[.04]", text: "text-amber-700 dark:text-amber-300" },
+}
+
+/* ────────────────────────────────────────────────────────────── */
+/*  Component                                                     */
+/* ────────────────────────────────────────────────────────────── */
 
 export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   const { settings } = session
   const currentCategoryId = session.categoryIds[session.currentDraftIndex]
+
+  /* ── state ─────────────────────────────────────────────────── */
 
   const [draftState, setDraftState] = useState<DraftState>({
     draftNumber: session.currentDraftIndex + 1,
@@ -95,19 +125,32 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
     phase: "drafting",
   })
 
-  const [showPoints, setShowPoints] = useState(false)
+  const [showPoints, setShowPoints] = useState(true)
   const [categoryName, setCategoryName] = useState("")
-
-  // Inline search state
   const [search, setSearch] = useState("")
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [selectedPlayer, setSelectedPlayer] = useState<SelectedPlayerData | null>(null)
+  const [selectedPlayer, setSelectedPlayer] =
+    useState<SelectedPlayerData | null>(null)
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
-  const [searchOpen, setSearchOpen] = useState(true)
+  const [searchOpen, setSearchOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Reset draft state when currentDraftIndex changes
+  /* close search dropdown on click outside */
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  /* ── reset on new draft ───────────────────────────────────── */
+
   useEffect(() => {
     const catId = session.categoryIds[session.currentDraftIndex]
     setDraftState({
@@ -120,16 +163,14 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
       picks: [],
       phase: "drafting",
     })
-    setShowPoints(false)
+    setShowPoints(true)
     setCategoryName("")
-    // Reset search state
     setSearch("")
     setSearchResults([])
     setSelectedPlayer(null)
     setSelectedSeason(null)
-    setSearchOpen(true)
+    setSearchOpen(false)
 
-    // Fetch category name
     async function fetchCatName() {
       try {
         const res = await fetch(`/api/games/trivia-categories/${catId}`)
@@ -138,16 +179,16 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
           setCategoryName(data.name || "")
         }
       } catch {
-        // silent
+        /* silent */
       }
     }
     fetchCatName()
   }, [session.currentDraftIndex, session.categoryIds])
 
-  // Search with debounce
+  /* ── search debounce ──────────────────────────────────────── */
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-
     if (!search.trim()) {
       setSearchResults([])
       setSearchLoading(false)
@@ -155,7 +196,6 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
       setSelectedSeason(null)
       return
     }
-
     debounceRef.current = setTimeout(async () => {
       setSearchLoading(true)
       try {
@@ -172,18 +212,18 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         setSearchLoading(false)
       }
     }, 250)
-
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [search])
 
+  /* ── derived ──────────────────────────────────────────────── */
+
   const usedPlayerSeasons = useMemo(() => {
     const set = new Set(session.usedPlayerSeasons)
     draftState.picks.forEach((p) => {
-      if (p.nflPlayer.playerId !== "PASS") {
+      if (p.nflPlayer.playerId !== "PASS")
         set.add(`${p.nflPlayer.playerId}-${p.nflPlayer.season}`)
-      }
     })
     return set
   }, [session.usedPlayerSeasons, draftState.picks])
@@ -195,28 +235,27 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   const pickInRound = draftState.pickNumber % settings.players.length
   const currentPlayerIndex = snakeOrder[pickInRound]
   const currentPlayer = settings.players[currentPlayerIndex]
-
   const currentSlot = getSlotForPick(
     settings,
     draftState.pickNumber,
     currentPlayerIndex,
     draftState.picks
   )
-
   const isDraftComplete = draftState.pickNumber >= totalPicks
+  const isLastDraft =
+    session.currentDraftIndex >= settings.numberOfDrafts - 1
 
-  // Build board data
   const boardData = useMemo(() => {
     return settings.players.map((player) => {
-      const playerPicks = draftState.picks.filter(
+      const pp = draftState.picks.filter(
         (p) => p.draftPlayerId === player.id
       )
       return {
         player,
-        picks: settings.lineupSlots.map((slot) => {
-          return playerPicks.find((p) => p.slotLabel === slot.label) || null
-        }),
-        totalPoints: playerPicks.reduce(
+        picks: settings.lineupSlots.map(
+          (slot) => pp.find((p) => p.slotLabel === slot.label) || null
+        ),
+        totalPoints: pp.reduce(
           (sum, p) => sum + (p.pointsAwarded ?? p.fantasyPointsPpr),
           0
         ),
@@ -224,56 +263,71 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
     })
   }, [settings.players, settings.lineupSlots, draftState.picks])
 
-  // Group search results by player (collapse across seasons)
+  const rankings = useMemo(() => {
+    const sorted = boardData.map((d) => ({
+      id: d.player.id,
+      pts: d.totalPoints,
+    }))
+    sorted.sort((a, b) => b.pts - a.pts)
+    const m: Record<string, number> = {}
+    sorted.forEach((s, i) => {
+      m[s.id] =
+        i > 0 && s.pts === sorted[i - 1].pts ? m[sorted[i - 1].id] : i + 1
+    })
+    return m
+  }, [boardData])
+
   const groupedSearchResults = useMemo(() => {
     const grouped = new Map<string, SearchResult[]>()
-    searchResults.forEach((result) => {
-      if (!grouped.has(result.playerId)) {
-        grouped.set(result.playerId, [])
-      }
-      grouped.get(result.playerId)!.push(result)
+    searchResults.forEach((r) => {
+      if (!grouped.has(r.playerId)) grouped.set(r.playerId, [])
+      grouped.get(r.playerId)!.push(r)
     })
     return Array.from(grouped.values()).map((results) => {
       const first = results[0]
       const sorted = results.sort((a, b) => b.season - a.season)
-      const availableSeasons = sorted.filter(
+      const avail = sorted.filter(
         (r) => !usedPlayerSeasons.has(`${r.playerId}-${r.season}`)
       )
       return {
         ...first,
         allSeasons: sorted,
-        availableSeasons,
-        hasAvailable: availableSeasons.length > 0,
+        availableSeasons: avail,
+        hasAvailable: avail.length > 0,
       }
     })
   }, [searchResults, usedPlayerSeasons])
 
-  const validPositions = currentSlot ? SLOT_VALID_POSITIONS[currentSlot.position] : []
+  const validPositions = currentSlot
+    ? SLOT_VALID_POSITIONS[currentSlot.position]
+    : []
   const filteredResults = groupedSearchResults.filter((r) =>
     validPositions.includes(r.position)
   )
 
-  const handlePick = useCallback(
-    (searchResult: SearchResult) => {
-      if (!currentSlot) return
+  const showScore = showPoints || draftState.phase === "complete"
 
+  /* ── callbacks ────────────────────────────────────────────── */
+
+  const handlePick = useCallback(
+    (sr: SearchResult) => {
+      if (!currentSlot) return
       const pick: DraftPick = {
         pickNumber: draftState.pickNumber + 1,
         round: currentRound,
         draftPlayerId: currentPlayer.id,
         nflPlayer: {
-          playerId: searchResult.playerId,
-          name: searchResult.name,
-          position: searchResult.position,
-          team: searchResult.team,
-          season: searchResult.season,
-          headshotUrl: searchResult.headshotUrl,
+          playerId: sr.playerId,
+          name: sr.name,
+          position: sr.position,
+          team: sr.team,
+          season: sr.season,
+          headshotUrl: sr.headshotUrl,
         },
         slotPosition: currentSlot.position,
         slotLabel: currentSlot.label,
-        fantasyPointsPpr: searchResult.fantasyPoints,
+        fantasyPointsPpr: sr.fantasyPoints,
       }
-
       setDraftState((prev) => ({
         ...prev,
         picks: [...prev.picks, pick],
@@ -283,14 +337,13 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
       setSearchResults([])
       setSelectedPlayer(null)
       setSelectedSeason(null)
-      setSearchOpen(true)
+      setSearchOpen(false)
     },
     [draftState.pickNumber, currentRound, currentPlayer, currentSlot]
   )
 
   const handlePassTurn = useCallback(() => {
     if (!currentSlot) return
-
     const pick: DraftPick = {
       pickNumber: draftState.pickNumber + 1,
       round: currentRound,
@@ -307,7 +360,6 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
       slotLabel: currentSlot.label,
       fantasyPointsPpr: 0,
     }
-
     setDraftState((prev) => ({
       ...prev,
       picks: [...prev.picks, pick],
@@ -326,57 +378,48 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
 
   const handleReveal = useCallback(async () => {
     setDraftState((prev) => ({ ...prev, phase: "revealing" }))
-
     try {
-      const res = await fetch(`/api/games/trivia-categories/${currentCategoryId}`)
+      const res = await fetch(
+        `/api/games/trivia-categories/${currentCategoryId}`
+      )
       if (!res.ok) throw new Error("Failed to fetch category")
       const data = await res.json()
       const validPlayers: TriviaCategoryPlayer[] = data.validPlayers || []
-
-      const validSet = new Set(validPlayers.map((vp) => `${vp.playerId}-${vp.season}`))
-
+      const validSet = new Set(
+        validPlayers.map((vp) => `${vp.playerId}-${vp.season}`)
+      )
       const scoredPicks = draftState.picks.map((pick) => {
-        if (pick.nflPlayer.playerId === "PASS") {
+        if (pick.nflPlayer.playerId === "PASS")
           return { ...pick, fitsCategory: false, pointsAwarded: 0 }
-        }
-
-        const key = `${pick.nflPlayer.playerId}-${pick.nflPlayer.season}`
-        const fits = validSet.has(key)
-
+        const fits = validSet.has(
+          `${pick.nflPlayer.playerId}-${pick.nflPlayer.season}`
+        )
         let pointsAwarded: number
-        if (fits) {
-          pointsAwarded = pick.fantasyPointsPpr
-        } else if (settings.invalidPickPenalty === "points") {
+        if (fits) pointsAwarded = pick.fantasyPointsPpr
+        else if (settings.invalidPickPenalty === "points")
           pointsAwarded = -session.penaltyPoints
-        } else if (settings.invalidPickPenalty === "skip") {
-          pointsAwarded = 0
-        } else {
-          pointsAwarded = pick.fantasyPointsPpr
-        }
-
+        else if (settings.invalidPickPenalty === "skip") pointsAwarded = 0
+        else pointsAwarded = pick.fantasyPointsPpr
         return { ...pick, fitsCategory: fits, pointsAwarded }
       })
-
       const scores: Record<string, number> = {}
       settings.players.forEach((p) => {
         scores[p.id] = scoredPicks
-          .filter((pick) => pick.draftPlayerId === p.id)
-          .reduce((sum, pick) => sum + (pick.pointsAwarded ?? 0), 0)
+          .filter((pk) => pk.draftPlayerId === p.id)
+          .reduce((sum, pk) => sum + (pk.pointsAwarded ?? 0), 0)
       })
-
       const maxScore = Math.max(...Object.values(scores))
-      const winners = Object.entries(scores).filter(([, score]) => score === maxScore)
-      const winner = winners.length === 1 ? winners[0][0] : null
-
+      const winners = Object.entries(scores).filter(
+        ([, s]) => s === maxScore
+      )
       const draftResult: DraftResult = {
         draftNumber: session.currentDraftIndex + 1,
         categoryId: currentCategoryId,
-        categoryName: categoryName,
+        categoryName,
         picks: scoredPicks,
         scores,
-        winner,
+        winner: winners.length === 1 ? winners[0][0] : null,
       }
-
       setDraftState((prev) => ({
         ...prev,
         picks: scoredPicks,
@@ -384,26 +427,31 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
         revealedPlayers: validPlayers,
       }))
       setShowPoints(true)
-
       const newDrafts = [...session.drafts]
       newDrafts[session.currentDraftIndex] = draftResult
-
-      const newUsedPlayerSeasons = [
-        ...session.usedPlayerSeasons,
-        ...scoredPicks
-          .filter((p) => p.nflPlayer.playerId !== "PASS")
-          .map((p) => `${p.nflPlayer.playerId}-${p.nflPlayer.season}`),
-      ]
-
       onSessionUpdate({
         ...session,
         drafts: newDrafts,
-        usedPlayerSeasons: newUsedPlayerSeasons,
+        usedPlayerSeasons: [
+          ...session.usedPlayerSeasons,
+          ...scoredPicks
+            .filter((p) => p.nflPlayer.playerId !== "PASS")
+            .map(
+              (p) => `${p.nflPlayer.playerId}-${p.nflPlayer.season}`
+            ),
+        ],
       })
     } catch {
       setDraftState((prev) => ({ ...prev, phase: "complete" }))
     }
-  }, [currentCategoryId, categoryName, draftState.picks, settings, session, onSessionUpdate])
+  }, [
+    currentCategoryId,
+    categoryName,
+    draftState.picks,
+    settings,
+    session,
+    onSessionUpdate,
+  ])
 
   const handleNextDraft = useCallback(() => {
     onSessionUpdate({
@@ -414,348 +462,423 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   }, [session, onSessionUpdate])
 
   const handleFinishGame = useCallback(() => {
-    onSessionUpdate({
-      ...session,
-      phase: "final-results",
-    })
+    onSessionUpdate({ ...session, phase: "final-results" })
   }, [session, onSessionUpdate])
 
-  const isLastDraft = session.currentDraftIndex >= settings.numberOfDrafts - 1
-
   const handleSelectPlayer = (playerData: SearchResult) => {
-    const availableSeasons = playerData.allSeasons
-      .filter((r) => !usedPlayerSeasons.has(`${r.playerId}-${r.season}`))
+    const avail = playerData.allSeasons
+      .filter(
+        (r) => !usedPlayerSeasons.has(`${r.playerId}-${r.season}`)
+      )
       .map((r) => ({
         season: r.season,
         fantasyPoints: r.fantasyPoints,
         team: r.team,
       }))
-
     setSelectedPlayer({
       name: playerData.name,
       playerId: playerData.playerId,
       position: playerData.position,
       headshotUrl: playerData.headshotUrl,
-      availableSeasons,
+      availableSeasons: avail,
     })
-    setSelectedSeason(availableSeasons[0]?.season || null)
+    setSelectedSeason(avail[0]?.season || null)
   }
 
   const handleConfirmPick = () => {
     if (!selectedPlayer || selectedSeason === null) return
-
-    const seasonData = selectedPlayer.availableSeasons.find(
+    const sd = selectedPlayer.availableSeasons.find(
       (s) => s.season === selectedSeason
     )
-
     handlePick({
       name: selectedPlayer.name,
       playerId: selectedPlayer.playerId,
       position: selectedPlayer.position,
-      team: seasonData?.team || "",
+      team: sd?.team || "",
       season: selectedSeason,
       headshotUrl: selectedPlayer.headshotUrl,
-      fantasyPoints: seasonData?.fantasyPoints || 0,
+      fantasyPoints: sd?.fantasyPoints || 0,
     })
   }
 
+  /* ── render ───────────────────────────────────────────────── */
+
   return (
     <div className="space-y-4">
-      <div className="text-center space-y-2">
-        {settings.numberOfDrafts > 1 && (
-          <div className="text-sm font-mono text-muted-foreground">
-            Draft {session.currentDraftIndex + 1} of {settings.numberOfDrafts}
-          </div>
-        )}
-        <h2 className="text-xl sm:text-2xl font-bold">{categoryName || "Loading..."}</h2>
-
-        {!isDraftComplete && draftState.phase === "drafting" && (
-          <div className="flex items-center justify-center gap-3 text-sm">
-            <span className="text-muted-foreground">
-              Round {currentRound} · Pick {draftState.pickNumber + 1} of {totalPicks}
-            </span>
-            {currentSlot && settings.onePositionAtATime && (
-              <span className="font-mono bg-muted px-2 py-0.5 text-xs">
-                {currentSlot.label}
-              </span>
-            )}
-          </div>
-        )}
-
-        {!isDraftComplete && draftState.phase === "drafting" && currentPlayer && (
-          <div
-            className="inline-flex items-center gap-2 px-4 py-2 border-2 text-sm font-bold"
-            style={{ borderColor: currentPlayer.color }}
-          >
-            <div className="size-3" style={{ backgroundColor: currentPlayer.color }} />
-            {currentPlayer.name}'s Turn
-          </div>
-        )}
+      {/* ═══════ HEADER ═══════ */}
+      <div className="text-center pt-2 pb-1">
+        <p className="text-sm font-mono text-muted-foreground tracking-widest uppercase">
+          {settings.numberOfDrafts > 1 && (
+            <>
+              Game {session.currentDraftIndex + 1}/
+              {settings.numberOfDrafts} &middot;{" "}
+            </>
+          )}
+          {draftState.phase === "drafting" &&
+            !isDraftComplete &&
+            `Round ${currentRound} \u00b7 Pick ${pickInRound + 1}`}
+          {isDraftComplete &&
+            draftState.phase === "drafting" &&
+            "All Picks In"}
+          {draftState.phase === "revealing" && "Revealing\u2026"}
+          {draftState.phase === "complete" && "Results"}
+        </p>
+        <h2 className="text-3xl sm:text-4xl font-bold italic mt-1">
+          {categoryName || (
+            <Skeleton className="h-10 w-72 mx-auto" />
+          )}
+        </h2>
+        {!isDraftComplete &&
+          draftState.phase === "drafting" &&
+          currentPlayer && (
+            <p
+              className="text-lg font-bold mt-1"
+              style={{ color: currentPlayer.color }}
+            >
+              {currentPlayer.name}&apos;s Turn
+            </p>
+          )}
       </div>
 
-      {draftState.phase === "drafting" && !isDraftComplete && currentSlot && currentPlayer && (
-        <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-            <PopoverTrigger asChild>
-              <div className="relative w-full max-w-xs cursor-text">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onClick={() => setSearchOpen(true)}
-                  placeholder={`Search ${currentSlot.label}...`}
-                  autoComplete="off"
-                  className="pl-9 pr-8"
-                />
-                {search && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
-                    <XButton
-                      size="xs"
-                      variant="muted"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setSearch("")
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </PopoverTrigger>
-            <PopoverContent align="start" side="bottom" sideOffset={4} onOpenAutoFocus={(e) => e.preventDefault()}>
-              <div className="w-[320px] p-0 bg-popover text-popover-foreground rounded-md border shadow-md max-h-[300px] overflow-auto">
-                {selectedPlayer ? (
-                  <div className="p-3 space-y-3">
-                    <div className="flex items-center gap-3 p-2 bg-muted/30 rounded">
-                      {selectedPlayer.headshotUrl ? (
-                        <img src={selectedPlayer.headshotUrl} alt="" className="size-12 object-cover shrink-0" />
-                      ) : (
-                        <div className="size-12 bg-muted shrink-0" />
-                      )}
-                      <div>
-                        <div className="font-medium">{selectedPlayer.name}</div>
-                        <PositionBadge position={selectedPlayer.position} size="compact" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Select season:</span>
-                      <Select value={selectedSeason?.toString() || ""} onValueChange={(v) => setSelectedSeason(parseInt(v))}>
-                        <SelectTrigger className="flex-1 h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {selectedPlayer.availableSeasons.map((s) => (
-                            <SelectItem key={s.season} value={s.season.toString()}>
-                              {s.season} ({s.fantasyPoints.toFixed(1)} pts)
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => setSelectedPlayer(null)} className="flex-1">
-                        Back
-                      </Button>
-                      <Button onClick={handleConfirmPick} disabled={selectedSeason === null} className="btn-chamfer flex-1">
-                        Confirm
-                      </Button>
-                    </div>
-                  </div>
-                ) : searchLoading ? (
-                  <div className="p-3 space-y-2">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : filteredResults.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">
-                    {search.trim() ? "No players found" : "Type a name to search"}
-                  </div>
-                ) : (
-                  filteredResults.map((player) => (
-                    <button
-                      key={`${player.playerId}-group`}
-                      disabled={!player.hasAvailable}
-                      onClick={() => handleSelectPlayer(player)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent/50 text-left disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {player.headshotUrl ? (
-                        <img src={player.headshotUrl} alt="" className="h-9 w-9 object-cover shrink-0" />
-                      ) : (
-                        <div className="h-9 w-9 bg-muted shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{player.name}</div>
-                        <div className="flex items-center gap-1.5">
-                          <PositionBadge position={player.position} size="compact" />
-                          <span className="text-xs text-muted-foreground">{player.team || "FA"}</span>
-                          {player.availableSeasons.length < player.allSeasons.length && (
-                            <span className="text-xs text-muted-foreground">
-                              {player.availableSeasons.length}/{player.allSeasons.length}
-                            </span>
-                          )}
+      {/* ═══════ CONTROLS ═══════ */}
+      {draftState.phase === "drafting" &&
+        !isDraftComplete &&
+        currentSlot &&
+        currentPlayer && (
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            {/* Search */}
+            <div ref={searchRef} className="relative w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/40 pointer-events-none" />
+              <Input
+                ref={inputRef}
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setSearchOpen(true) }}
+                onFocus={() => setSearchOpen(true)}
+                placeholder="Search players..."
+                autoComplete="off"
+                className="pl-9 pr-9 h-10 text-sm"
+              />
+              {search && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+                  <XButton
+                    size="xs"
+                    variant="muted"
+                    onClick={() => {
+                      setSearch("")
+                      setSearchOpen(false)
+                      setSelectedPlayer(null)
+                      inputRef.current?.focus()
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Dropdown */}
+              {searchOpen && (search.trim() || selectedPlayer) && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg z-50 overflow-hidden">
+                  {selectedPlayer ? (
+                    /* ── Season picker ── */
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center gap-4">
+                        {selectedPlayer.headshotUrl ? (
+                          <img src={selectedPlayer.headshotUrl} alt="" className="size-14 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="size-14 rounded-full bg-muted/30 shrink-0" />
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-lg">{selectedPlayer.name}</span>
+                            <PositionBadge position={selectedPlayer.position} size="compact" />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {selectedPlayer.availableSeasons.length} season{selectedPlayer.availableSeasons.length !== 1 ? "s" : ""} available
+                          </p>
                         </div>
                       </div>
-                      {!player.hasAvailable && (
-                        <span className="text-xs text-muted-foreground font-medium">Used</span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
+                      {/* Season buttons */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedPlayer.availableSeasons.map((s) => (
+                          <button
+                            key={s.season}
+                            onClick={() => setSelectedSeason(s.season)}
+                            className={cn(
+                              "px-3 py-1.5 text-sm font-mono font-bold rounded-md transition-colors",
+                              selectedSeason === s.season
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted/30 hover:bg-muted/50 text-foreground"
+                            )}
+                          >
+                            {s.season}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedPlayer(null)}
+                          className="flex-1"
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          onClick={handleConfirmPick}
+                          disabled={selectedSeason === null}
+                          className="btn-chamfer flex-1"
+                        >
+                          Confirm Pick
+                        </Button>
+                      </div>
+                    </div>
+                  ) : searchLoading ? (
+                    <div className="p-3 space-y-2">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
+                      ))}
+                    </div>
+                  ) : filteredResults.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      No players found
+                    </div>
+                  ) : (
+                    <div className="max-h-[360px] overflow-auto">
+                      {filteredResults.map((player) => (
+                        <button
+                          key={`${player.playerId}-group`}
+                          disabled={!player.hasAvailable}
+                          onClick={() => handleSelectPlayer(player)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 text-left disabled:opacity-30 disabled:cursor-not-allowed transition-colors border-b border-border/10 last:border-b-0"
+                        >
+                          {player.headshotUrl ? (
+                            <img src={player.headshotUrl} alt="" className="size-12 rounded-full object-cover shrink-0" />
+                          ) : (
+                            <div className="size-12 rounded-full bg-muted/20 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-base truncate">{player.name}</span>
+                              <PositionBadge position={player.position} size="compact" />
+                            </div>
+                            {player.availableSeasons.length < player.allSeasons.length && (
+                              <span className="text-xs text-muted-foreground/60 font-mono mt-0.5">
+                                {player.availableSeasons.length}/{player.allSeasons.length} seasons
+                              </span>
+                            )}
+                          </div>
+                          {!player.hasAvailable && (
+                            <span className="text-xs text-muted-foreground font-medium">Used</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-          <Button variant="outline" size="sm" onClick={handlePassTurn}>
-            <SkipForward className="size-3.5 mr-1" />
-            Pass
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleUndoPick} disabled={draftState.picks.length === 0}>
-            <Undo2 className="size-3.5 mr-1" />
-            Undo
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowPoints(!showPoints)}>
-            {showPoints ? <EyeOff className="size-3.5 mr-1" /> : <Eye className="size-3.5 mr-1" />}
-            {showPoints ? "Hide" : "Show"} Points
-          </Button>
-        </div>
-      )}
+            <Button variant="outline" size="sm" onClick={handlePassTurn} className="gap-1.5 h-10">
+              <SkipForward className="size-3.5" />
+              Pass
+            </Button>
 
+            <Button variant="outline" size="sm" onClick={handleUndoPick} disabled={draftState.picks.length === 0} className="gap-1.5 h-10">
+              <Undo2 className="size-3.5" />
+              Undo
+            </Button>
+          </div>
+        )}
+
+      {/* ═══════ REVEAL / NEXT / FINISH ═══════ */}
       {isDraftComplete && draftState.phase === "drafting" && (
         <div className="flex justify-center">
-          <Button onClick={handleReveal} className="btn-chamfer h-10 px-6 font-bold">
+          <Button onClick={handleReveal} className="btn-chamfer h-11 px-8 font-bold">
             Reveal Results
           </Button>
         </div>
       )}
-
       {draftState.phase === "revealing" && (
-        <div className="flex justify-center">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-            Revealing results...
-          </div>
+        <div className="flex justify-center py-4">
+          <span className="text-sm text-muted-foreground animate-pulse">Revealing results&hellip;</span>
         </div>
       )}
-
       {draftState.phase === "complete" && (
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center">
           {isLastDraft ? (
-            <Button onClick={handleFinishGame} className="btn-chamfer h-10 px-6 font-bold">
+            <Button onClick={handleFinishGame} className="btn-chamfer h-11 px-8 font-bold">
               {settings.numberOfDrafts > 1 ? "Final Results" : "Results"}
             </Button>
           ) : (
-            <Button onClick={handleNextDraft} className="btn-chamfer h-10 px-6 font-bold">
+            <Button onClick={handleNextDraft} className="btn-chamfer h-11 px-8 font-bold gap-1.5">
               Next Draft
-              <ChevronRight className="size-4 ml-1" />
+              <ChevronRight className="size-4" />
             </Button>
           )}
         </div>
       )}
 
-      <div className="overflow-x-auto -mx-3 px-3">
+      {/* ═══════ DRAFT BOARD ═══════ */}
+      <div className="overflow-x-auto -mx-3 px-3 pb-4">
+        {/* CSS Grid: pos-label column + one column per player */}
         <div
-          className="grid gap-px bg-border min-w-fit"
+          className="min-w-fit"
           style={{
-            gridTemplateColumns: `80px repeat(${settings.players.length}, minmax(140px, 1fr))`,
+            display: "grid",
+            gridTemplateColumns: `80px repeat(${settings.players.length}, minmax(280px, 1fr))`,
           }}
         >
-          <div className="bg-background p-2" />
-          {settings.players.map((player, i) => {
-            const playerScore = boardData[i]?.totalPoints ?? 0
+          {/* ── Row 0: Header ── */}
+          {/* Top-left corner — empty, no borders */}
+          <div />
+
+          {/* Player column headers */}
+          {settings.players.map((player, playerIdx) => {
+            const data = boardData[playerIdx]
+            const score = data?.totalPoints ?? 0
+            const rank = rankings[player.id] || playerIdx + 1
+            const isActivePlayer =
+              !isDraftComplete &&
+              draftState.phase === "drafting" &&
+              currentPlayerIndex === playerIdx
+
             return (
-              <div key={player.id} className="bg-background p-2 text-center border-b-2" style={{ borderBottomColor: player.color }}>
-                <div className="font-bold text-sm truncate" style={{ color: player.color }}>
-                  {player.name}
-                </div>
-                {(showPoints || draftState.phase === "complete") && (
-                  <div className="text-xs font-mono text-muted-foreground mt-0.5">
-                    {playerScore.toFixed(1)} pts
+              <div
+                key={player.id}
+                className="border border-b-0 border-gray-500/20 overflow-hidden"
+              >
+                {/* Color accent bar */}
+                <div className="h-1" style={{ backgroundColor: player.color }} />
+
+                <div className="px-4 py-3 flex items-center justify-between gap-3">
+                  {/* Name + on the clock inline */}
+                  <div className="flex items-baseline gap-3 min-w-0">
+                    <span className="text-2xl font-bold truncate">
+                      {player.name}
+                    </span>
+                    {isActivePlayer && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Circle className="size-2 fill-primary text-primary animate-pulse" />
+                        <span className="text-xs font-semibold text-primary uppercase tracking-wider">On the Clock</span>
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {showScore && (
+                    <div className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 border border-gray-500/25 font-mono tabular-nums">
+                      {rank === 1 && draftState.picks.length > 0 && (
+                        <Trophy className="size-3.5 text-amber-500" />
+                      )}
+                      <span className="font-extrabold text-xl">{score.toFixed(1)}</span>
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">pts</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}
 
-          {settings.lineupSlots.map((slot, slotIndex) => (
-            <div key={`row-${slot.id}`} className="contents">
-              <div className="bg-muted/30 p-2 flex items-center justify-center">
-                <span className="text-xs font-mono font-bold text-muted-foreground">
-                  {slot.label}
-                </span>
-              </div>
+          {/* ── Slot Rows (inside border) ── */}
+          {settings.lineupSlots.map((slot, slotIdx) => {
+            const pc = posColors[slot.position] || posColors.FLEX
+            const posLabel = slot.position === "SUPERFLEX" ? "SF" : slot.position
 
-              {settings.players.map((player, playerIdx) => {
-                const pick = boardData[playerIdx]?.picks[slotIndex] || null
-                const isCurrentPick =
+            return [
+              /* Position label cell */
+              <div
+                key={`pos-${slot.id}`}
+                className={cn(
+                  "flex items-center justify-center",
+                  pc.label,
+                  "border-l border-t",
+                  slotIdx > 0 ? "border-t-gray-500/20" : "",
+                  "border-r border-r-gray-500/20",
+                  slotIdx === settings.lineupSlots.length - 1 && "border-b"
+                )}
+              >
+                <span className={cn("text-sm font-extrabold tracking-wider", pc.text)}>
+                  {posLabel}
+                </span>
+              </div>,
+
+              /* Player cells for this slot */
+              ...settings.players.map((player, playerIdx) => {
+                const data = boardData[playerIdx]
+                const pick = data?.picks[slotIdx] || null
+                const isOtc =
                   draftState.phase === "drafting" &&
                   !isDraftComplete &&
                   currentPlayerIndex === playerIdx &&
+                  currentSlot?.label === slot.label &&
                   !pick
 
                 return (
                   <div
                     key={`${slot.id}-${player.id}`}
                     className={cn(
-                      "bg-background p-1.5 min-h-[56px] transition-colors",
-                      isCurrentPick && "bg-primary/5 ring-1 ring-primary/30 ring-inset"
+                      "transition-colors border-t",
+                      slotIdx > 0 ? "border-t-gray-500/20" : "",
+                      playerIdx > 0 && "border-l border-l-gray-500/20",
+                      playerIdx === settings.players.length - 1 && "border-r",
+                      slotIdx === settings.lineupSlots.length - 1 && "border-b",
+                      isOtc && "bg-primary/[.04] shadow-[inset_0_0_24px_-6px_var(--color-primary)]"
                     )}
                   >
                     {pick ? (
-                      <PickCell
+                      <SlotCard
                         pick={pick}
-                        showPoints={showPoints || draftState.phase === "complete"}
+                        showPoints={showScore}
                         isRevealed={draftState.phase === "complete"}
                       />
                     ) : (
-                      isCurrentPick && (
-                        <div className="flex items-center justify-center h-full">
-                          <span className="text-xs text-primary/50 font-medium animate-pulse">
-                            On the clock
-                          </span>
-                        </div>
-                      )
+                      <EmptySlot isOtc={isOtc} />
                     )}
                   </div>
                 )
-              })}
-            </div>
-          ))}
+              }),
+            ]
+          })}
         </div>
       </div>
 
+      {/* ═══════ RESULTS SUMMARY ═══════ */}
       {draftState.phase === "complete" && (
-        <div className="border-t pt-4 space-y-3">
-          <h3 className="font-bold text-lg text-center">
-            Draft {session.currentDraftIndex + 1} Results
-          </h3>
-          <div className="flex flex-wrap justify-center gap-3">
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center gap-2 px-1">
+            <Trophy className="size-4 text-primary" />
+            <h3 className="font-bold text-sm">
+              Draft {session.currentDraftIndex + 1} Results
+            </h3>
+          </div>
+          <div className="rounded-lg overflow-hidden bg-muted/10">
             {boardData
               .slice()
               .sort((a, b) => b.totalPoints - a.totalPoints)
-              .map(({ player, totalPoints }, rank) => {
-                const draftResult = session.drafts[session.currentDraftIndex]
-                const isWinner = draftResult?.winner === player.id
+              .map(({ player, totalPoints }, idx) => {
+                const rank = rankings[player.id] || 1
+                const dr = session.drafts[session.currentDraftIndex]
+                const isWinner = dr?.winner === player.id
                 return (
                   <div
                     key={player.id}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 border",
-                      isWinner && "border-primary bg-primary/5"
+                      "flex items-center gap-4 px-4 py-3",
+                      idx > 0 && "border-t border-border/10",
+                      isWinner && "bg-primary/5"
                     )}
                   >
-                    <span className="text-lg font-mono font-bold text-muted-foreground">
-                      #{rank + 1}
+                    <span className="text-sm font-mono font-bold text-muted-foreground w-6 text-center">
+                      {ordinal(rank)}
                     </span>
-                    <div className="size-3" style={{ backgroundColor: player.color }} />
-                    <span className="font-bold">{player.name}</span>
-                    <span className="font-mono font-bold text-lg">
+                    <span
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-[4px]"
+                      style={{ backgroundColor: player.color, color: "#000" }}
+                    >
+                      {player.name}
+                    </span>
+                    <span className="flex-1" />
+                    <span className="font-mono font-extrabold tabular-nums text-xl">
                       {totalPoints.toFixed(1)}
                     </span>
-                    {isWinner && (
-                      <span className="text-xs font-bold text-primary">
-                        WINNER
-                      </span>
-                    )}
+                    <span className="text-xs text-muted-foreground font-medium">pts</span>
+                    {isWinner && <Trophy className="size-4 text-amber-500 shrink-0" />}
                   </div>
                 )
               })}
@@ -766,50 +889,86 @@ export function DraftBoard({ session, onSessionUpdate }: DraftBoardProps) {
   )
 }
 
-function PickCell({ pick, showPoints, isRevealed }: { pick: DraftPick; showPoints: boolean; isRevealed: boolean }) {
+/* ────────────────────────────────────────────────────────────── */
+/*  SlotCard — a filled pick                                      */
+/* ────────────────────────────────────────────────────────────── */
+
+function SlotCard({
+  pick,
+  showPoints,
+  isRevealed,
+}: {
+  pick: DraftPick
+  showPoints: boolean
+  isRevealed: boolean
+}) {
   if (pick.nflPlayer.playerId === "PASS") {
     return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
-        Pass
+      <div className="flex items-center justify-center h-[76px]">
+        <span className="text-xs text-muted-foreground/25 italic font-mono">— pass —</span>
       </div>
     )
   }
 
+  const pts = pick.pointsAwarded ?? pick.fantasyPointsPpr
+
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-3 px-3 py-2 h-[76px]">
+      {/* Headshot */}
       {pick.nflPlayer.headshotUrl ? (
-        <img src={pick.nflPlayer.headshotUrl} alt="" className="size-9 object-cover shrink-0" />
+        <img src={pick.nflPlayer.headshotUrl} alt="" className="size-14 rounded-full object-cover shrink-0" />
       ) : (
-        <div className="size-9 bg-muted shrink-0" />
+        <div className="size-14 rounded-full bg-muted/10 shrink-0" />
       )}
-      <div className="min-w-0 flex-1">
-        <div className="text-xs font-medium truncate leading-tight">
+
+      {/* Info block */}
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-base truncate leading-tight">
           {pick.nflPlayer.name}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2 mt-0.5">
           <PositionBadge position={pick.nflPlayer.position} size="compact" />
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="font-mono font-bold text-lg tabular-nums text-foreground leading-none">
             {pick.nflPlayer.season}
           </span>
+          {pick.nflPlayer.team && pick.nflPlayer.team !== "-" && (
+            <TeamLogo team={pick.nflPlayer.team} className="size-8 shrink-0 mix-blend-multiply dark:mix-blend-screen" />
+          )}
         </div>
-        {showPoints && (
-          <div
-            className={cn(
-              "text-[10px] font-mono font-bold mt-0.5",
-              isRevealed &&
-                pick.fitsCategory !== undefined &&
-                (pick.fitsCategory ? "text-emerald-500" : "text-destructive")
-            )}
-          >
-            {isRevealed && pick.fitsCategory !== undefined && (
-              <span className="mr-0.5">
-                {pick.fitsCategory ? "\u2713" : "\u2717"}
-              </span>
-            )}
-            {(pick.pointsAwarded ?? pick.fantasyPointsPpr).toFixed(1)}
-          </div>
-        )}
       </div>
+
+      {/* Points */}
+      {showPoints && (
+        <div
+          className={cn(
+            "px-4 py-2 border text-xl font-mono font-extrabold tabular-nums shrink-0 text-center min-w-[80px]",
+            isRevealed && pick.fitsCategory !== undefined
+              ? pick.fitsCategory
+                ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/8"
+                : "border-destructive/40 text-destructive bg-destructive/8"
+              : "border-gray-500/25 text-foreground"
+          )}
+        >
+          {isRevealed && pick.fitsCategory !== undefined && (
+            <span className="mr-0.5 text-sm">{pick.fitsCategory ? "\u2713" : "\u2717"}</span>
+          )}
+          {pts.toFixed(1)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────── */
+/*  EmptySlot                                                     */
+/* ────────────────────────────────────────────────────────────── */
+
+function EmptySlot({ isOtc }: { isOtc: boolean }) {
+  return (
+    <div className="flex items-center justify-center h-[76px]">
+      {isOtc ? (
+        <span className="text-sm font-semibold text-primary/60">Drafting...</span>
+      ) : null}
     </div>
   )
 }

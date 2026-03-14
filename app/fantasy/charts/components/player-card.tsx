@@ -808,9 +808,9 @@ export function PlayerCard({ player, isOpen, onClose, initialSeason }: PlayerCar
                     className="h-28 w-28 sm:h-36 sm:w-36 object-contain"
                   />
                 </div>
-                {player.headshotUrl ? (
+                {(rosterData?.headshot_url || player.headshotUrl) ? (
                   <img
-                    src={player.headshotUrl}
+                    src={rosterData?.headshot_url || player.headshotUrl}
                     alt=""
                     className="h-32 w-32 sm:h-40 sm:w-40 rounded-full object-cover relative z-10"
                   />

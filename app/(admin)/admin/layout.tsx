@@ -34,6 +34,7 @@ const NAV_ITEMS = [
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/connections", label: "Connections" },
   { href: "/admin/trivia-categories", label: "Trivia Draft" },
+  { href: "/admin/codenames", label: "Codenames" },
   { href: "/admin/settings", label: "Settings" },
 ]
 

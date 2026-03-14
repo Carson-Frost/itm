@@ -43,6 +43,14 @@ export function Navbar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem>
+          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+            <Link href="/games/codenames">
+              Codenames
+            </Link>
+          </NavigationMenuLink>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
           <NavigationMenuTrigger onClick={(e) => {
             if (e.currentTarget.getAttribute('data-state') === 'open') {
               e.preventDefault()
