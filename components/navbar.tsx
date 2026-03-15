@@ -27,27 +27,24 @@ export function Navbar() {
         <NavigationMenu viewport={isMobile} className="hidden sm:flex">
           <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link href="/connections">
-              Connections
-            </Link>
-          </NavigationMenuLink>
-        </NavigationMenuItem>
-
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link href="/games/trivia-draft">
-              Trivia Draft
-            </Link>
-          </NavigationMenuLink>
-        </NavigationMenuItem>
-
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link href="/games/codenames">
-              Codenames
-            </Link>
-          </NavigationMenuLink>
+          <NavigationMenuTrigger onClick={(e) => {
+            if (e.currentTarget.getAttribute('data-state') === 'open') {
+              e.preventDefault()
+            }
+          }}>Games</NavigationMenuTrigger>
+          <NavigationMenuContent>
+            <ul className="grid gap-2 w-[400px] md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+              <ListItem href="/connections" title="Connections">
+                Daily NFL player puzzle — group 16 players into 4 categories.
+              </ListItem>
+              <ListItem href="/games/trivia-draft" title="Trivia Draft">
+                Draft NFL players to match a hidden trivia category.
+              </ListItem>
+              <ListItem href="/games/codenames" title="Codenames">
+                Team-based word game with NFL players, teams, and more.
+              </ListItem>
+            </ul>
+          </NavigationMenuContent>
         </NavigationMenuItem>
 
         <NavigationMenuItem>

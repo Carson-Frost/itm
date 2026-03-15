@@ -23,7 +23,6 @@ import type {
   PlayerRole,
   GameMode,
 } from "@/lib/types/codenames"
-import { TEAM_COLORS } from "@/lib/types/codenames"
 import { cn } from "@/lib/utils"
 
 interface GameLobbyProps {
@@ -91,7 +90,6 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
   const redPlayers = lobby.players.filter((p) => p.team === "red")
   const bluePlayers = lobby.players.filter((p) => p.team === "blue")
 
-  // Validation
   const hasMinPlayers = lobby.players.length >= 2
   const eachTeamHasPlayers = redPlayers.length > 0 && bluePlayers.length > 0
   const eachTeamHasSpymaster =
@@ -102,9 +100,9 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
     : hasMinPlayers && eachTeamHasSpymaster && eachTeamHasPlayers
 
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
-      {/* Top bar: title + leave */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-3xl mx-auto px-3 sm:px-6 py-6 sm:py-10">
+      {/* Top bar */}
+      <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold underline">Codenames</h1>
         <Button variant="outline" size="sm" onClick={onLeave} className="gap-1.5">
           <LogOut className="size-3.5" />
@@ -112,13 +110,14 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
         </Button>
       </div>
 
-      {/* Lobby code — large, copyable */}
-      <div className="flex items-center justify-center mb-8">
+      {/* Lobby code */}
+      <div className="flex flex-col items-center mb-10">
+        <p className="text-sm text-muted-foreground uppercase tracking-widest mb-2">Share this code to invite players</p>
         <button
           onClick={copyCode}
-          className="flex items-center gap-3 px-6 py-3 border-3 border-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+          className="flex items-center gap-3 px-8 py-4 bg-card border hover:bg-muted/30 transition-colors"
         >
-          <span className="font-mono font-bold text-3xl sm:text-4xl tracking-[0.3em] text-primary">
+          <span className="font-mono font-bold text-4xl sm:text-5xl tracking-[0.4em] text-primary">
             {lobby.code}
           </span>
           {copied ? (
@@ -129,9 +128,27 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
         </button>
       </div>
 
-      {/* 3-column layout: Blue | Settings | Red */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 md:gap-6 mb-8">
-        {/* Red team column */}
+      {/* Mode selector */}
+      <div className="flex justify-center mb-8">
+        <div className="inline-flex bg-muted/30 p-1">
+          <ModeButton
+            label="Classic"
+            isActive={!isDuet}
+            disabled={!isHost}
+            onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "classic" })}
+          />
+          <ModeButton
+            label="Duet"
+            isActive={isDuet}
+            disabled={!isHost}
+            onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "duet" })}
+          />
+        </div>
+      </div>
+
+      {/* 3-column layout */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_1fr] gap-4 md:gap-5 mb-8">
+        {/* Red / Player A */}
         <TeamColumn
           team="red"
           label={isDuet ? "Player A" : "Red Team"}
@@ -142,63 +159,24 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
           onJoin={joinSlot}
         />
 
-        {/* Settings column (center) */}
-        <div className="w-full md:w-[260px] order-first md:order-none">
-          {/* Mode tabs */}
-          <div className="flex border-2 border-border mb-4">
-            <ModeTab
-              mode="classic"
-              isActive={!isDuet}
-              disabled={!isHost}
-              onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "classic" })}
-            />
-            <ModeTab
-              mode="duet"
-              isActive={isDuet}
-              disabled={!isHost}
-              onClick={() => isHost && updateSettings({ ...lobby.settings, gameMode: "duet" })}
-            />
+        {/* Settings */}
+        <div className="order-first md:order-none bg-card border p-4">
+          <p className="text-sm text-muted-foreground uppercase tracking-widest font-medium mb-4">
+            Board Content
+          </p>
+          <div className="space-y-3.5">
+            <SettingToggle label="NFL Players" checked={lobby.settings.includePlayers} disabled={!isHost} onChange={(v) => updateSettings({ ...lobby.settings, includePlayers: v })} />
+            <SettingToggle label="NFL Teams" checked={lobby.settings.includeTeams} disabled={!isHost} onChange={(v) => updateSettings({ ...lobby.settings, includeTeams: v })} />
+            <SettingToggle label="Colleges" checked={lobby.settings.includeCollegeTeams} disabled={!isHost} onChange={(v) => updateSettings({ ...lobby.settings, includeCollegeTeams: v })} />
+            <SettingToggle label="Coaches" checked={lobby.settings.includeCoaches} disabled={!isHost} onChange={(v) => updateSettings({ ...lobby.settings, includeCoaches: v })} />
           </div>
-
-          {/* Content toggles */}
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
-              Board Content
-            </p>
-            <SettingToggle
-              label="NFL Players"
-              checked={lobby.settings.includePlayers}
-              disabled={!isHost}
-              onChange={(v) => updateSettings({ ...lobby.settings, includePlayers: v })}
-            />
-            <SettingToggle
-              label="NFL Teams"
-              checked={lobby.settings.includeTeams}
-              disabled={!isHost}
-              onChange={(v) => updateSettings({ ...lobby.settings, includeTeams: v })}
-            />
-            <SettingToggle
-              label="Colleges"
-              checked={lobby.settings.includeCollegeTeams}
-              disabled={!isHost}
-              onChange={(v) => updateSettings({ ...lobby.settings, includeCollegeTeams: v })}
-            />
-            <SettingToggle
-              label="Coaches"
-              checked={lobby.settings.includeCoaches}
-              disabled={!isHost}
-              onChange={(v) => updateSettings({ ...lobby.settings, includeCoaches: v })}
-            />
-          </div>
-
-          {/* Player count */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-4">
-            <Users className="size-3.5" />
-            {lobby.players.length}/6 players
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-5 pt-4 border-t">
+            <Users className="size-4" />
+            {lobby.players.length} player{lobby.players.length !== 1 ? "s" : ""} in lobby
           </div>
         </div>
 
-        {/* Blue team column */}
+        {/* Blue / Player B */}
         <TeamColumn
           team="blue"
           label={isDuet ? "Player B" : "Blue Team"}
@@ -210,35 +188,27 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
         />
       </div>
 
-      {/* Validation message */}
+      {/* Validation */}
       {!canStart && isHost && (
-        <p className="text-xs text-destructive text-center mb-3">
-          {!hasMinPlayers
-            ? "Need at least 2 players"
-            : !eachTeamHasPlayers
-              ? "Each team needs at least 1 player"
-              : isDuet
-                ? "Each side needs a player"
-                : "Each team needs a spymaster"}
+        <p className="text-sm text-destructive text-center mb-3">
+          {!hasMinPlayers ? "Need at least 2 players"
+            : !eachTeamHasPlayers ? "Each team needs at least 1 player"
+            : isDuet ? "Each side needs a player" : "Each team needs a spymaster"}
         </p>
       )}
 
-      {/* Start button */}
+      {/* Start */}
       {isHost ? (
         <Button
           onClick={handleStart}
           disabled={!canStart || isStarting}
           className="btn-chamfer w-full h-12 text-base font-bold gap-2"
         >
-          {isStarting ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <Gamepad2 className="size-5" />
-          )}
+          {isStarting ? <Loader2 className="size-5 animate-spin" /> : <Gamepad2 className="size-5" />}
           Start Game
         </Button>
       ) : (
-        <div className="text-center py-4 text-sm text-muted-foreground">
+        <div className="text-center py-4 text-base text-muted-foreground">
           Waiting for the host to start the game...
         </div>
       )}
@@ -246,184 +216,149 @@ export function GameLobby({ lobby, playerId, send, onLeave }: GameLobbyProps) {
   )
 }
 
-// ---- Mode tab ----
+// ---- Sub-components ----
 
-function ModeTab({
-  mode,
-  isActive,
-  disabled,
-  onClick,
-}: {
-  mode: GameMode
-  isActive: boolean
-  disabled: boolean
-  onClick: () => void
-}) {
+function ModeButton({ label, isActive, disabled, onClick }: { label: string; isActive: boolean; disabled: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex-1 py-2 text-sm font-bold uppercase tracking-wider transition-colors",
-        isActive
-          ? "bg-primary text-primary-foreground"
-          : "bg-transparent text-muted-foreground hover:text-foreground",
+        "px-5 py-2 text-sm font-bold transition-all",
+        isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
         disabled && !isActive && "cursor-not-allowed opacity-50",
       )}
     >
-      {mode === "classic" ? "Classic" : "Duet"}
+      {label}
     </button>
   )
 }
 
-// ---- Setting toggle ----
-
-function SettingToggle({
-  label,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  disabled: boolean
-  onChange: (v: boolean) => void
-}) {
+function SettingToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between">
-      <Label className="text-sm">{label}</Label>
+      <Label className="text-base">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>
   )
 }
 
-// ---- Team column ----
-
-function TeamColumn({
-  team,
-  label,
-  players,
-  playerId,
-  isDuet,
-  lobbyHostId,
-  onJoin,
-}: {
-  team: TeamColor
-  label: string
-  players: import("@/lib/types/codenames").LobbyPlayer[]
-  playerId: string
-  isDuet: boolean
-  lobbyHostId: string
-  onJoin: (team: TeamColor, role: PlayerRole) => void
+function TeamColumn({ team, label, players, playerId, isDuet, lobbyHostId, onJoin }: {
+  team: TeamColor; label: string; players: import("@/lib/types/codenames").LobbyPlayer[]
+  playerId: string; isDuet: boolean; lobbyHostId: string; onJoin: (team: TeamColor, role: PlayerRole) => void
 }) {
-  const colors = TEAM_COLORS[team]
+  const isRed = team === "red"
   const spymasters = players.filter((p) => p.role === "spymaster")
   const operatives = players.filter((p) => p.role === "operative")
   const meOnThisTeam = players.some((p) => p.id === playerId)
 
   return (
     <div className={cn(
-      "border-2 overflow-hidden",
-      colors.borderMuted,
+      "border overflow-hidden",
+      isRed ? "border-red-500/30 bg-red-500/[0.04]" : "border-blue-500/30 bg-blue-500/[0.04]",
     )}>
       {/* Team header */}
-      <div className={cn("px-3 py-2.5", colors.bgMuted)}>
-        <h3 className={cn("text-sm font-bold uppercase tracking-wider", colors.text)}>
+      <div className={cn("px-5 py-4 flex items-center gap-2.5", isRed ? "bg-red-500/10" : "bg-blue-500/10")}>
+        <div className={cn("size-3", isRed ? "bg-red-500" : "bg-blue-500")} />
+        <h3 className={cn("text-lg font-bold uppercase tracking-wider", isRed ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400")}>
           {label}
         </h3>
       </div>
 
-      {isDuet ? (
-        // Duet: single slot per side
-        <div className="p-3">
-          <RoleBucket
-            label=""
+      <div className="p-4 space-y-5">
+        {isDuet ? (
+          <RoleSection
+            label={null}
             players={players}
             playerId={playerId}
             lobbyHostId={lobbyHostId}
             onJoin={() => onJoin(team, "operative")}
             showJoin={!meOnThisTeam}
+            team={team}
           />
-        </div>
-      ) : (
-        // Classic: spymaster + operative buckets
-        <div className="p-3 space-y-3">
-          <RoleBucket
-            label="Spymaster"
-            icon={<Eye className="size-3" />}
-            players={spymasters}
-            playerId={playerId}
-            lobbyHostId={lobbyHostId}
-            onJoin={() => onJoin(team, "spymaster")}
-            showJoin={!spymasters.some((p) => p.id === playerId)}
-          />
-          <RoleBucket
-            label="Operatives"
-            icon={<Crosshair className="size-3" />}
-            players={operatives}
-            playerId={playerId}
-            lobbyHostId={lobbyHostId}
-            onJoin={() => onJoin(team, "operative")}
-            showJoin={!operatives.some((p) => p.id === playerId)}
-          />
-        </div>
-      )}
+        ) : (
+          <>
+            <RoleSection
+              label="Spymaster"
+              icon={<Eye className="size-4" />}
+              players={spymasters}
+              playerId={playerId}
+              lobbyHostId={lobbyHostId}
+              onJoin={() => onJoin(team, "spymaster")}
+              showJoin={!spymasters.some((p) => p.id === playerId)}
+              team={team}
+            />
+            <RoleSection
+              label="Operatives"
+              icon={<Crosshair className="size-4" />}
+              players={operatives}
+              playerId={playerId}
+              lobbyHostId={lobbyHostId}
+              onJoin={() => onJoin(team, "operative")}
+              showJoin={!operatives.some((p) => p.id === playerId)}
+              team={team}
+            />
+          </>
+        )}
+      </div>
     </div>
   )
 }
 
-// ---- Role bucket ----
-
-function RoleBucket({
-  label,
-  icon,
-  players,
-  playerId,
-  lobbyHostId,
-  onJoin,
-  showJoin,
-}: {
-  label: string
+function RoleSection({ label, icon, players, playerId, lobbyHostId, onJoin, showJoin, team }: {
+  label: string | null
   icon?: React.ReactNode
   players: import("@/lib/types/codenames").LobbyPlayer[]
   playerId: string
   lobbyHostId: string
   onJoin: () => void
   showJoin: boolean
+  team: TeamColor
 }) {
+  const isRed = team === "red"
+
   return (
     <div>
       {label && (
-        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1">
-          {icon} {label}
+        <p className={cn(
+          "text-sm font-bold uppercase tracking-widest mb-2.5 flex items-center gap-2",
+          isRed ? "text-red-500/50" : "text-blue-500/50",
+        )}>
+          {icon}
+          {label}
         </p>
       )}
-      <div className="border border-dashed border-border/60 min-h-[40px] p-2 space-y-1.5">
+      <div className={cn(
+        "min-h-[52px] p-3 space-y-2",
+        isRed ? "bg-red-500/[0.06]" : "bg-blue-500/[0.06]",
+      )}>
         {players.map((p) => (
           <div key={p.id} className={cn(
-            "flex items-center gap-2 text-sm",
-            p.id === playerId && "text-primary font-bold",
+            "flex items-center gap-2.5 text-base px-2 py-1.5",
+            p.id === playerId ? "bg-primary/10 text-primary font-bold" : "",
           )}>
             <span className="truncate flex-1">{p.name}</span>
-            {p.id === lobbyHostId && <Crown className="size-3 text-amber-500 shrink-0" />}
-            {p.id === playerId && (
-              <span className="text-[9px] text-primary/70 uppercase tracking-widest shrink-0">(you)</span>
-            )}
+            {p.id === lobbyHostId && <Crown className="size-4 text-amber-500 shrink-0" />}
+            {p.id === playerId && <span className="text-xs text-primary/60 uppercase tracking-widest shrink-0">(you)</span>}
           </div>
         ))}
         {players.length === 0 && showJoin && (
-          <button
-            onClick={onJoin}
-            className="w-full py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors uppercase tracking-wider font-medium"
-          >
+          <button onClick={onJoin} className={cn(
+            "w-full py-2.5 text-sm font-bold uppercase tracking-wider transition-colors",
+            isRed
+              ? "text-red-500/50 hover:text-red-500 hover:bg-red-500/10"
+              : "text-blue-500/50 hover:text-blue-500 hover:bg-blue-500/10",
+          )}>
             Join
           </button>
         )}
         {players.length > 0 && showJoin && (
-          <button
-            onClick={onJoin}
-            className="w-full py-1 text-[10px] text-muted-foreground/60 hover:text-foreground hover:bg-muted/30 transition-colors uppercase tracking-wider"
-          >
+          <button onClick={onJoin} className={cn(
+            "w-full py-1.5 text-xs font-medium uppercase tracking-wider transition-colors",
+            isRed
+              ? "text-red-500/30 hover:text-red-500 hover:bg-red-500/10"
+              : "text-blue-500/30 hover:text-blue-500 hover:bg-blue-500/10",
+          )}>
             Move here
           </button>
         )}
