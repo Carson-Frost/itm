@@ -167,12 +167,10 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
         />
 
         {/* Center: status + grid */}
-        <div
-          className="flex-1 flex flex-col min-w-0"
-          style={{ background: "radial-gradient(ellipse at 50% 40%, oklch(0.24 0.015 160 / 0.8), transparent 70%)" }}
-        >
-          {/* Status text + Leave button — above the board */}
-          <div className="shrink-0 flex items-center justify-between px-3 sm:px-4 lg:px-6 pt-3 sm:pt-4 pb-1">
+        <div className="flex-1 lg:flex-initial lg:w-[calc(100dvh-13rem)] flex flex-col min-w-0">
+          <div className="flex-1 min-h-0" />
+          {/* Status text + Leave button */}
+          <div className="shrink-0 flex items-center justify-between px-2 sm:px-3 lg:px-4">
             <div className={cn("flex items-center gap-2.5", getStatusColor())}>
               {gs.winner && (gs.winReason === "assassin" || gs.winReason === "tokens-depleted"
                 ? <Skull className="size-6 sm:size-7" />
@@ -182,14 +180,18 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
                 {getStatusText()}
               </h2>
             </div>
-            <Button variant="outline" size="sm" onClick={onLeave} className="gap-2 shrink-0">
-              <LogOut className="size-4" />
+            <button
+              onClick={onLeave}
+              className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-zinc-200/60 hover:bg-zinc-300/70 dark:bg-zinc-800/60 dark:hover:bg-zinc-700/70 border border-zinc-400 dark:border-zinc-500/40 text-zinc-600 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 text-xs font-bold uppercase tracking-widest transition-colors"
+            >
+              <LogOut className="size-3" />
               Leave
-            </Button>
+            </button>
           </div>
+          <div className="flex-1 min-h-0" />
 
           {/* 5x5 grid */}
-          <div className="flex-1 flex items-center justify-center p-3 sm:p-4 lg:p-6">
+          <div className="shrink-0 flex items-center justify-center px-2 sm:px-3 lg:px-4">
             <div
               className="grid grid-cols-5 gap-2 sm:gap-2.5 lg:gap-3 w-full max-w-[min(100%,calc(100dvh-15rem))]"
               style={{ aspectRatio: "1" }}
@@ -209,6 +211,92 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
               ))}
             </div>
           </div>
+          <div className="flex-1 min-h-0" />
+          {/* Clue strip — floating pill below board */}
+          <div className="shrink-0 flex items-center justify-center gap-3 px-4">
+            {gs.currentClue && !gs.winner && (
+              <>
+                <div className="inline-flex items-center gap-2 rounded-full bg-zinc-800 dark:bg-zinc-900 p-1.5 sm:p-2">
+                  <div className="rounded-full bg-zinc-200 dark:bg-zinc-700/60 px-7 sm:px-10 py-2 sm:py-2.5 text-center">
+                    <span className="font-black text-lg sm:text-2xl lg:text-3xl font-mono tracking-[0.15em] uppercase text-zinc-900 dark:text-zinc-100">
+                      {gs.currentClue.word}
+                    </span>
+                  </div>
+                  <div className={cn(
+                    "size-10 sm:size-12 shrink-0 rounded-full flex items-center justify-center font-mono font-black text-lg sm:text-2xl",
+                    gs.currentClue.team === "red"
+                      ? "bg-zinc-200 dark:bg-zinc-700/60 text-red-400"
+                      : "bg-zinc-200 dark:bg-zinc-700/60 text-blue-400",
+                  )}>
+                    {gs.currentClue.number}
+                  </div>
+                </div>
+                {canEndTurn && (
+                  <Button variant="outline" className="gap-2 h-10 rounded-full text-sm font-bold" onClick={handleEndTurn}>
+                    <SkipForward className="size-4" />
+                    End Turn
+                  </Button>
+                )}
+              </>
+            )}
+
+            {canGiveClue && !gs.winner && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-zinc-800 dark:bg-zinc-900 p-1.5 sm:p-2 w-full max-w-lg">
+                <Input
+                  value={clueWord}
+                  onChange={(e) => setClueWord(e.target.value.replace(/\s/g, ""))}
+                  placeholder="One-word clue..."
+                  autoComplete="off"
+                  className="flex-1 h-9 sm:h-11 !rounded-full bg-zinc-200 dark:bg-zinc-700/60 border-0 text-base sm:text-lg font-mono uppercase tracking-wider text-center text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && clueWord.trim()) handleGiveClue()
+                  }}
+                />
+                <div className="flex items-center shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700/60 overflow-hidden">
+                  <button
+                    className="size-8 sm:size-10 flex items-center justify-center text-zinc-600 dark:text-zinc-300 font-bold text-base sm:text-lg transition-colors hover:bg-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-30"
+                    onClick={() => setClueNumber(Math.max(0, clueNumber - 1))}
+                    disabled={clueNumber <= 0}
+                  >
+                    -
+                  </button>
+                  <span className="w-5 sm:w-6 text-center font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">{clueNumber}</span>
+                  <button
+                    className="size-8 sm:size-10 flex items-center justify-center text-zinc-600 dark:text-zinc-300 font-bold text-base sm:text-lg transition-colors hover:bg-zinc-300 dark:hover:bg-zinc-600"
+                    onClick={() => setClueNumber(Math.min(9, clueNumber + 1))}
+                  >
+                    +
+                  </button>
+                </div>
+                <Button
+                  onClick={handleGiveClue}
+                  disabled={!clueWord.trim()}
+                  size="icon"
+                  className="size-9 sm:size-11 shrink-0 !rounded-full"
+                >
+                  <Send className="size-4" />
+                </Button>
+              </div>
+            )}
+
+            {!gs.currentClue && !canGiveClue && !gs.winner && (
+              <p className="text-sm text-muted-foreground py-1">
+                {isDuet
+                  ? isMyTeamTurn ? "Your turn to give a clue..." : "Waiting for partner's clue..."
+                  : isSpymaster && !isMyTeamTurn ? "Waiting for other team..."
+                  : !isSpymaster && isMyTeamTurn && isCluePhase ? "Waiting for spymaster..."
+                  : !isMyTeamTurn ? "Waiting for other team..." : null}
+              </p>
+            )}
+
+            {gs.winner && (
+              <Button onClick={handlePlayAgain} className="btn-chamfer h-11 px-7 gap-2 text-base font-bold">
+                <RotateCcw className="size-4" />
+                Play Again
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 min-h-0" />
         </div>
 
         {/* Right sidebar */}
@@ -224,103 +312,6 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
           turnHistory={gs.turnHistory}
           cards={gs.cards}
         />
-      </div>
-
-      {/* ===== BOTTOM BAR ===== */}
-      <div className="shrink-0 border-t bg-card/50 backdrop-blur-sm">
-        {/* Active clue — large, centered */}
-        {gs.currentClue && !gs.winner && (
-          <div className="flex items-center justify-center gap-4 px-4 pt-4 pb-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-[0.2em] font-medium">Clue</span>
-            <span className="font-bold text-2xl sm:text-3xl font-mono tracking-wider">{gs.currentClue.word}</span>
-            <span className={cn(
-              "font-bold font-mono text-xl sm:text-2xl size-9 sm:size-11 flex items-center justify-center text-white",
-              gs.currentClue.team === "red" ? "bg-red-400" : "bg-blue-400",
-            )}>
-              {gs.currentClue.number}
-            </span>
-          </div>
-        )}
-
-        {/* Controls */}
-        <div className="px-4 sm:px-6 py-3 flex items-center justify-center gap-3">
-          {canGiveClue && !gs.winner && (
-            <div className="flex items-center gap-2 w-full max-w-lg">
-              <Input
-                value={clueWord}
-                onChange={(e) => setClueWord(e.target.value.replace(/\s/g, ""))}
-                placeholder="One-word clue..."
-                autoComplete="off"
-                className="flex-1 h-12 text-lg font-mono uppercase tracking-wider text-center"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && clueWord.trim()) handleGiveClue()
-                }}
-              />
-              <div className="flex items-center gap-0.5 bg-muted/30 px-1.5 py-1">
-                <button
-                  className="size-9 flex items-center justify-center hover:bg-muted/50 text-muted-foreground font-bold text-lg transition-colors"
-                  onClick={() => setClueNumber(Math.max(0, clueNumber - 1))}
-                  disabled={clueNumber <= 0}
-                >
-                  -
-                </button>
-                <span className="w-7 text-center font-mono font-bold text-lg">{clueNumber}</span>
-                <button
-                  className="size-9 flex items-center justify-center hover:bg-muted/50 text-muted-foreground font-bold text-lg transition-colors"
-                  onClick={() => setClueNumber(Math.min(9, clueNumber + 1))}
-                >
-                  +
-                </button>
-              </div>
-              <Button
-                onClick={handleGiveClue}
-                disabled={!clueWord.trim()}
-                className="btn-chamfer h-12 px-6 gap-2 text-base"
-              >
-                <Send className="size-4" />
-                Give Clue
-              </Button>
-            </div>
-          )}
-
-          {canEndTurn && !gs.winner && (
-            <Button variant="outline" className="gap-2 h-10 text-sm" onClick={handleEndTurn}>
-              <SkipForward className="size-4" />
-              End Turn
-            </Button>
-          )}
-
-          {!canGiveClue && !canEndTurn && !gs.winner && (
-            <p className="text-sm text-muted-foreground py-1">
-              {isDuet
-                ? isMyTeamTurn ? "Your turn to give a clue..." : "Waiting for partner's clue..."
-                : isSpymaster && !isMyTeamTurn ? "Waiting for other team..."
-                : !isSpymaster && isMyTeamTurn && isCluePhase ? "Waiting for spymaster..."
-                : !isMyTeamTurn ? "Waiting for other team..." : null}
-            </p>
-          )}
-
-          {gs.winner && (
-            <div className="flex items-center gap-5">
-              <div className={cn(
-                "flex items-center gap-2.5 font-bold text-xl",
-                isDuet
-                  ? gs.winReason === "all-found" ? "text-emerald-400" : "text-foreground"
-                  : gs.winner === "red" ? "text-red-400" : "text-blue-400",
-              )}>
-                {gs.winReason === "assassin" || gs.winReason === "tokens-depleted" ? <Skull className="size-6" /> : <Trophy className="size-6" />}
-                {isDuet
-                  ? gs.winReason === "all-found" ? "All found!" : gs.winReason === "tokens-depleted" ? "Out of tokens!" : "Assassin!"
-                  : `${gs.winner === "red" ? "Red" : "Blue"} Wins!`
-                }
-              </div>
-              <Button onClick={handlePlayAgain} className="btn-chamfer h-11 px-7 gap-2 text-base">
-                <RotateCcw className="size-4" />
-                Play Again
-              </Button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Confirm dialog */}
@@ -354,7 +345,7 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
               guessAlert.result === "red" ? "border-red-400"
                 : guessAlert.result === "blue" ? "border-blue-400"
                 : guessAlert.result === "green" ? "border-emerald-400"
-                : guessAlert.result === "assassin" ? "border-zinc-900"
+                : guessAlert.result === "assassin" ? "border-zinc-700"
                 : "border-zinc-600",
             )}
             style={{ animation: "guess-pop 2s ease-in-out forwards" }}
@@ -364,7 +355,7 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
               guessAlert.result === "red" ? "border-red-400"
                 : guessAlert.result === "blue" ? "border-blue-400"
                 : guessAlert.result === "green" ? "border-emerald-400"
-                : guessAlert.result === "assassin" ? "border-zinc-900"
+                : guessAlert.result === "assassin" ? "border-zinc-700"
                 : "border-zinc-600",
             )}>
               {guessAlert.imageUrl ? (
@@ -381,7 +372,7 @@ export function GameBoard({ lobby, playerId, send, onLeave }: GameBoardProps) {
               guessAlert.result === "red" ? "text-red-400"
                 : guessAlert.result === "blue" ? "text-blue-400"
                 : guessAlert.result === "green" ? "text-emerald-400"
-                : guessAlert.result === "assassin" ? "text-white"
+                : guessAlert.result === "assassin" ? "text-zinc-300"
                 : "text-zinc-400",
             )}>
               {guessAlert.result === "red" ? "Red Agent"
@@ -435,9 +426,11 @@ function TeamPanel({
 }) {
   const isRed = team === "red"
   const logEndRef = useRef<HTMLDivElement>(null)
+  const remaining = total - found
   const pct = total > 0 ? (found / total) * 100 : 0
   const spymasters = players.filter((p) => p.role === "spymaster")
   const operatives = players.filter((p) => p.role === "operative")
+  const teamTurns = turnHistory.filter((t) => t.team === team)
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -445,29 +438,40 @@ function TeamPanel({
 
   return (
     <div className={cn(
-      "hidden lg:flex flex-col w-[260px] shrink-0",
+      "hidden lg:flex flex-col flex-1 @container",
       isRed ? "border-r border-border/20" : "border-l border-border/20",
     )}>
-      {/* Score header */}
-      <div className="shrink-0 p-5 pb-4">
-        <p className={cn(
-          "text-sm font-bold uppercase tracking-widest mb-4",
-          isRed ? "text-red-400" : "text-blue-400",
-        )}>
+      {/* Team name + remaining count */}
+      <div className="shrink-0 px-[5cqw] pt-[4cqw] pb-[4cqw]">
+        <h2 className={cn(
+          "font-black uppercase tracking-wide underline underline-offset-4 decoration-2",
+          isRed ? "text-red-400 decoration-red-400/50" : "text-blue-400 decoration-blue-400/50",
+        )} style={{ fontSize: "clamp(1.25rem, 7cqw, 2rem)", marginBottom: "clamp(0.75rem, 3cqw, 1.5rem)" }}>
           {label}
-        </p>
+        </h2>
 
-        <div className="flex items-baseline gap-2">
-          <span className={cn(
-            "text-5xl font-black tabular-nums leading-none",
-            isDuet ? "text-emerald-400" : isRed ? "text-red-400" : "text-blue-400",
-          )}>
-            {found}
+        <div className="flex items-baseline justify-between">
+          <div className="flex items-baseline" style={{ gap: "clamp(0.5rem, 2cqw, 0.75rem)" }}>
+            <span className={cn(
+              "font-black tabular-nums leading-none",
+              isDuet ? "text-emerald-400" : isRed ? "text-red-400" : "text-blue-400",
+            )} style={{ fontSize: "clamp(2.5rem, 14cqw, 5rem)" }}>
+              {remaining}
+            </span>
+            <span className={cn(
+              "font-bold uppercase tracking-wide",
+              isDuet ? "text-emerald-400/60" : isRed ? "text-red-400/60" : "text-blue-400/60",
+            )} style={{ fontSize: "clamp(0.875rem, 5cqw, 1.5rem)" }}>
+              remaining
+            </span>
+          </div>
+          <span className="font-bold tabular-nums text-muted-foreground" style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1rem)" }}>
+            {found}/{total}
           </span>
-          <span className="text-2xl text-muted-foreground/30 tabular-nums font-bold">/ {total}</span>
         </div>
 
-        <div className="h-2 bg-muted/20 mt-4">
+        {/* Progress bar */}
+        <div className="h-2 border border-muted-foreground/25" style={{ marginTop: "clamp(0.25rem, 1cqw, 0.5rem)" }}>
           <div
             className={cn(
               "h-full transition-all duration-700 ease-out",
@@ -478,30 +482,30 @@ function TeamPanel({
         </div>
 
         {isDuet && duetTokens !== undefined && (
-          <div className="flex items-center gap-2 mt-4">
-            <Coins className="size-5 text-amber-500" />
-            <span className="text-lg font-bold text-amber-500 tabular-nums">{duetTokens}</span>
-            <span className="text-sm text-muted-foreground/40">tokens</span>
+          <div className="flex items-center" style={{ gap: "clamp(0.5rem, 2cqw, 0.75rem)", marginTop: "clamp(0.75rem, 3cqw, 1.25rem)" }}>
+            <Coins className="text-amber-500" style={{ width: "clamp(1.25rem, 5cqw, 1.75rem)", height: "clamp(1.25rem, 5cqw, 1.75rem)" }} />
+            <span className="font-bold text-amber-500 tabular-nums" style={{ fontSize: "clamp(1rem, 5cqw, 1.5rem)" }}>{duetTokens}</span>
+            <span className="text-muted-foreground" style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1.125rem)" }}>tokens</span>
           </div>
         )}
       </div>
 
       {/* Roster */}
-      <div className="shrink-0 px-5 pb-4 space-y-5">
+      <div className="shrink-0 pb-[3cqw] px-[5cqw]" style={{ display: "flex", flexDirection: "column", gap: "clamp(0.75rem, 3cqw, 1.25rem)" }}>
         {isDuet ? (
           <div>
-            <p className="text-sm font-bold text-muted-foreground/50 uppercase tracking-widest mb-3">Players</p>
-            <div className="space-y-2">
+            <p className="font-bold text-muted-foreground uppercase tracking-widest underline underline-offset-4 decoration-1 decoration-muted-foreground/50" style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1.125rem)", marginBottom: "clamp(0.375rem, 1.5cqw, 0.75rem)" }}>Players</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "clamp(0.125rem, 0.75cqw, 0.375rem)" }}>
               {players.map((p) => (
                 <p
                   key={p.id}
                   className={cn(
-                    "text-lg",
-                    p.id === playerId ? "text-foreground font-bold" : "text-foreground/60",
+                    p.id === playerId ? "text-foreground font-bold" : "text-foreground",
                   )}
+                  style={{ fontSize: "clamp(1rem, 5cqw, 1.5rem)" }}
                 >
                   {p.name}
-                  {p.id === playerId && <span className="text-sm text-primary/50 ml-2">you</span>}
+                  {p.id === playerId && <span className="text-primary/50 ml-2" style={{ fontSize: "clamp(0.625rem, 3cqw, 0.875rem)" }}>you</span>}
                 </p>
               ))}
             </div>
@@ -510,24 +514,24 @@ function TeamPanel({
           <>
             <div>
               <p className={cn(
-                "text-sm font-bold uppercase tracking-widest mb-3",
-                isRed ? "text-red-400/50" : "text-blue-400/50",
-              )}>
+                "font-bold uppercase tracking-widest underline underline-offset-4 decoration-1",
+                isRed ? "text-red-400 decoration-red-400/50" : "text-blue-400 decoration-blue-400/50",
+              )} style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1.125rem)", marginBottom: "clamp(0.375rem, 1.5cqw, 0.75rem)" }}>
                 Spymaster
               </p>
-              <div className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "clamp(0.125rem, 0.75cqw, 0.375rem)" }}>
                 {spymasters.length === 0 ? (
-                  <p className="text-base text-muted-foreground/25 italic">Empty</p>
+                  <p className="text-muted-foreground italic" style={{ fontSize: "clamp(0.875rem, 4.5cqw, 1.25rem)" }}>Empty</p>
                 ) : spymasters.map((p) => (
                   <p
                     key={p.id}
                     className={cn(
-                      "text-lg",
                       p.id === playerId ? "text-foreground font-bold" : "text-foreground/60",
                     )}
+                    style={{ fontSize: "clamp(1rem, 5cqw, 1.5rem)" }}
                   >
                     {p.name}
-                    {p.id === playerId && <span className="text-sm text-primary/50 ml-2">you</span>}
+                    {p.id === playerId && <span className="text-primary/50 ml-2" style={{ fontSize: "clamp(0.625rem, 3cqw, 0.875rem)" }}>you</span>}
                   </p>
                 ))}
               </div>
@@ -535,24 +539,24 @@ function TeamPanel({
 
             <div>
               <p className={cn(
-                "text-sm font-bold uppercase tracking-widest mb-3",
-                isRed ? "text-red-400/50" : "text-blue-400/50",
-              )}>
+                "font-bold uppercase tracking-widest underline underline-offset-4 decoration-1",
+                isRed ? "text-red-400 decoration-red-400/50" : "text-blue-400 decoration-blue-400/50",
+              )} style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1.125rem)", marginBottom: "clamp(0.375rem, 1.5cqw, 0.75rem)" }}>
                 Operatives
               </p>
-              <div className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "clamp(0.125rem, 0.75cqw, 0.375rem)" }}>
                 {operatives.length === 0 ? (
-                  <p className="text-base text-muted-foreground/25 italic">Empty</p>
+                  <p className="text-muted-foreground italic" style={{ fontSize: "clamp(0.875rem, 4.5cqw, 1.25rem)" }}>Empty</p>
                 ) : operatives.map((p) => (
                   <p
                     key={p.id}
                     className={cn(
-                      "text-lg",
                       p.id === playerId ? "text-foreground font-bold" : "text-foreground/60",
                     )}
+                    style={{ fontSize: "clamp(1rem, 5cqw, 1.5rem)" }}
                   >
                     {p.name}
-                    {p.id === playerId && <span className="text-sm text-primary/50 ml-2">you</span>}
+                    {p.id === playerId && <span className="text-primary/50 ml-2" style={{ fontSize: "clamp(0.625rem, 3cqw, 0.875rem)" }}>you</span>}
                   </p>
                 ))}
               </div>
@@ -561,54 +565,55 @@ function TeamPanel({
         )}
       </div>
 
-      {/* Game log — turn numbers + thumbnail squares */}
+      {/* History */}
       <div className="flex-1 overflow-y-auto min-h-0 border-t border-border/20">
-        <div className="p-5">
-          <p className="text-sm font-bold text-muted-foreground/40 uppercase tracking-widest mb-4">Game Log</p>
-          {turnHistory.length === 0 ? (
-            <p className="text-base text-muted-foreground/25">No moves yet</p>
+        <div className="px-[5cqw] py-[3cqw]">
+          <p className="font-bold text-muted-foreground uppercase tracking-widest underline underline-offset-4 decoration-1 decoration-muted-foreground/50" style={{ fontSize: "clamp(0.75rem, 3.5cqw, 1.125rem)", marginBottom: "clamp(0.5rem, 2cqw, 1rem)" }}>History</p>
+          {teamTurns.length === 0 ? (
+            <p className="text-muted-foreground" style={{ fontSize: "clamp(0.875rem, 4.5cqw, 1.25rem)" }}>No moves yet</p>
           ) : (
-            <div className="space-y-5">
-              {turnHistory.map((turn, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs text-muted-foreground/30 font-bold tabular-nums">#{i + 1}</span>
-                    <p className={cn(
-                      "text-lg font-bold font-mono uppercase",
-                      turn.team === "red" ? "text-red-400" : "text-blue-400",
-                    )}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "clamp(1rem, 4cqw, 1.75rem)" }}>
+              {teamTurns.map((turn, i) => (
+                <div key={i}>
+                  {/* Turn number + clue word + clue number */}
+                  <div className="flex items-baseline" style={{ gap: "clamp(0.5rem, 2cqw, 0.875rem)", marginBottom: "clamp(0.25rem, 1cqw, 0.5rem)" }}>
+                    <span className="text-muted-foreground font-bold tabular-nums" style={{ fontSize: "clamp(0.875rem, 4cqw, 1.25rem)" }}>{i + 1}</span>
+                    <span className="font-black font-mono uppercase tracking-wide text-foreground" style={{ fontSize: "clamp(1.125rem, 5.5cqw, 1.75rem)" }}>
                       {turn.clue.word}
-                      <span className="text-muted-foreground/30 ml-2">{turn.clue.number}</span>
-                    </p>
+                    </span>
+                    <span className={cn(
+                      "font-black tabular-nums",
+                      isRed ? "text-red-400" : "text-blue-400",
+                    )} style={{ fontSize: "clamp(1.125rem, 5.5cqw, 1.75rem)" }}>
+                      {turn.clue.number}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {turn.guesses.map((g, j) => {
-                      const card = cards.find((c) => c.id === g.cardId)
-                      return (
-                        <div
-                          key={j}
-                          className={cn(
-                            "size-10 border-[3px] relative overflow-hidden",
-                            g.result === "red" ? "border-red-400"
-                              : g.result === "blue" ? "border-blue-400"
-                              : g.result === "green" ? "border-emerald-400"
-                              : g.result === "assassin" ? "border-zinc-900"
-                              : "border-zinc-600/50",
-                          )}
-                        >
-                          {card?.imageUrl ? (
-                            <img src={card.imageUrl} alt="" className="w-full h-full object-cover object-top" />
-                          ) : (
-                            <div className="w-full h-full bg-muted/30 flex items-center justify-center">
-                              <span className="text-[8px] font-bold text-muted-foreground/40">
-                                {g.cardName.charAt(0)}
-                              </span>
-                            </div>
-                          )}
+                  {/* Guessed names listed line by line */}
+                  {turn.guesses.length > 0 && (
+                    <div style={{ marginLeft: "clamp(1.5rem, 6.5cqw, 2.5rem)", display: "flex", flexDirection: "column", gap: "clamp(0.0625rem, 0.5cqw, 0.25rem)" }}>
+                      {turn.guesses.map((g, j) => (
+                        <div key={j} className="flex items-center" style={{ gap: "clamp(0.375rem, 1.5cqw, 0.625rem)" }}>
+                          <div className={cn(
+                            "shrink-0",
+                            g.result === "red" ? "bg-red-400"
+                              : g.result === "blue" ? "bg-blue-400"
+                              : g.result === "green" ? "bg-emerald-400"
+                              : g.result === "assassin" ? "bg-zinc-400"
+                              : "bg-zinc-600",
+                          )} style={{ width: "clamp(0.375rem, 1.5cqw, 0.5rem)", height: "clamp(0.375rem, 1.5cqw, 0.5rem)" }} />
+                          <span className={cn(
+                            g.result === team || g.result === "green"
+                              ? "text-foreground"
+                              : g.result === "assassin"
+                                ? "text-muted-foreground"
+                                : "text-muted-foreground",
+                          )} style={{ fontSize: "clamp(0.875rem, 4cqw, 1.25rem)" }}>
+                            {g.cardName}
+                          </span>
                         </div>
-                      )
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={logEndRef} />

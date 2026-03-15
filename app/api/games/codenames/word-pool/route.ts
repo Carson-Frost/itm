@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     if (includeTeams) {
       for (const team of nflTeams) {
         pool.push({
-          name: `${team.city} ${team.name}`,
+          name: team.name,
           imageUrl: `https://a.espncdn.com/i/teamlogos/nfl/500/${team.abbr.toLowerCase()}.png`,
           contentType: "team",
           subtitle: team.abbr,
